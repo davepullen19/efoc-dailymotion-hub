@@ -247,13 +247,18 @@ async function collectVideosByTag(tag) {
   );
 }
 
-// Cache the fetched videos, keyed by tag, so we don't re-query Dailymotion on
-// every page load. The in-memory Map is the source of truth (and the only
-// thing that works on Vercel, whose filesystem is read-only). We ALSO persist
-// to disk best-effort so a local `npm start` survives a restart — the write is
-// wrapped so a read-only FS (Vercel) just skips it silently.
+// Where the pulled videos live. When KV is configured (Vercel), every video is
+// stored as its OWN record (`video:<id>`), with a per-tag index set of ids
+// (`tag:<tag>:ids`) and a small meta record for the "last updated" time. This
+// makes the DB the shared, durable source of truth: reads on any serverless
+// instance see the same records, and each video can be read/updated on its own.
+// Done marks stay a separate set (`done:videos`) — unchanged. Locally (no KV)
+// we fall back to an in-memory Map + best-effort disk file so `npm start` works.
 const CACHE_FILE = path.join(__dirname, 'videos-cache.json');
 const memCache = new Map(); // key -> { tag, cachedAt, videos }
+const videoRecKey = (id) => `video:${id}`;
+const tagSetKey = (key) => `tag:${key}:ids`;
+const tagMetaKey = (key) => `tag:${key}:meta`;
 
 function readCache() {
   try {
@@ -267,29 +272,56 @@ function writeCache(cache) {
   try {
     fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
   } catch {
-    // Read-only filesystem (e.g. Vercel) — in-memory cache still applies.
+    // Read-only filesystem (e.g. Vercel without KV) — nothing we can do.
   }
 }
 
-/** Read a tag's cache entry: memory first, then fall back to disk (local). */
-function readEntry(key) {
+/** Read a tag's videos from the DB (per-video records) or local fallback. */
+async function readEntry(key) {
+  if (KV_ENABLED) {
+    const client = await kvClient();
+    const ids = await client.smembers(tagSetKey(key));
+    if (!ids || !ids.length) return null;
+    const recs = await client.mget(...ids.map(videoRecKey));
+    const videos = recs
+      .filter(Boolean)
+      .sort((a, b) => (b.created_time || 0) - (a.created_time || 0));
+    const meta = await client.get(tagMetaKey(key));
+    return { tag: key, cachedAt: meta?.cachedAt || null, videos };
+  }
   if (memCache.has(key)) return memCache.get(key);
   const disk = readCache()[key];
   if (disk) memCache.set(key, disk);
   return disk || null;
 }
 
-/** Fetch fresh, store in memory + best-effort disk, and return the entry. */
+/** Pull fresh from Dailymotion, upsert each video as its own DB record, and
+ *  reconcile the tag's id index (drop ids no longer returned). */
 async function refreshTag(tag) {
   const key = tag.replace(/^#/, '').toLowerCase();
   const videos = await collectVideosByTag(tag);
   const cachedAt = new Date().toISOString();
-  const entry = { tag: key, cachedAt, videos };
-  memCache.set(key, entry);
-  const cache = readCache();
-  cache[key] = entry;
-  writeCache(cache);
-  return entry;
+
+  if (KV_ENABLED) {
+    const client = await kvClient();
+    const newIds = videos.map((v) => String(v.id));
+    // Upsert every video record.
+    await Promise.all(videos.map((v) => client.set(videoRecKey(v.id), v)));
+    // Reconcile the tag index without ever emptying it (so concurrent reads
+    // never see a gap): add the current ids, then remove any that vanished.
+    const existing = (await client.smembers(tagSetKey(key))) || [];
+    const stale = existing.filter((id) => !newIds.includes(id));
+    if (newIds.length) await client.sadd(tagSetKey(key), ...newIds);
+    if (stale.length) await client.srem(tagSetKey(key), ...stale);
+    await client.set(tagMetaKey(key), { cachedAt });
+  } else {
+    const entry = { tag: key, cachedAt, videos };
+    memCache.set(key, entry);
+    const cache = readCache();
+    cache[key] = entry;
+    writeCache(cache);
+  }
+  return { tag: key, cachedAt, videos };
 }
 
 // GET = serve from cache; only fetch from Dailymotion the first time a tag is
@@ -298,7 +330,7 @@ app.get('/api/videos', async (req, res) => {
   const tag = (req.query.tag || 'EFOC26').toString().trim();
   const key = tag.replace(/^#/, '').toLowerCase();
   try {
-    let entry = readEntry(key);
+    let entry = await readEntry(key);
     let cached = true;
     if (!entry) {
       entry = await refreshTag(tag);

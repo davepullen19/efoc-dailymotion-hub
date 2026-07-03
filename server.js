@@ -324,6 +324,80 @@ app.post('/api/videos/refresh', async (req, res) => {
   }
 });
 
+// ---- "Done" marks ---------------------------------------------------------
+// Persist which videos have been marked done, keyed by video id, so the flag
+// survives re-pulls from Dailymotion. On Vercel we use Vercel KV (Redis);
+// locally (no KV env vars) we fall back to a JSON file so `npm start` works.
+// Accept either the classic Vercel KV names or the Upstash Marketplace names,
+// so it works however the integration injects the credentials.
+const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+const KV_ENABLED = !!(KV_URL && KV_TOKEN);
+const DONE_KEY = 'done:videos';
+const DONE_FILE = path.join(__dirname, 'done.json');
+
+let _kv = null;
+async function kvClient() {
+  if (!_kv) {
+    const { createClient } = await import('@vercel/kv');
+    _kv = createClient({ url: KV_URL, token: KV_TOKEN });
+  }
+  return _kv;
+}
+
+/** The set of video ids currently marked done. */
+async function getDoneIds() {
+  if (KV_ENABLED) {
+    const ids = await (await kvClient()).smembers(DONE_KEY);
+    return new Set(ids || []);
+  }
+  try {
+    return new Set(JSON.parse(fs.readFileSync(DONE_FILE, 'utf8')));
+  } catch {
+    return new Set();
+  }
+}
+
+/** Mark a video done (true) or not-done (false). */
+async function setDone(id, done) {
+  if (KV_ENABLED) {
+    const client = await kvClient();
+    if (done) await client.sadd(DONE_KEY, id);
+    else await client.srem(DONE_KEY, id);
+    return;
+  }
+  const ids = await getDoneIds();
+  if (done) ids.add(id);
+  else ids.delete(id);
+  try {
+    fs.writeFileSync(DONE_FILE, JSON.stringify([...ids], null, 2));
+  } catch {
+    // Read-only filesystem (e.g. Vercel without KV) — nothing we can do.
+  }
+}
+
+app.get('/api/done', async (req, res) => {
+  try {
+    res.json({ done: [...(await getDoneIds())] });
+  } catch (err) {
+    console.error('✗ Could not read done marks:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/done', async (req, res) => {
+  const id = req.body?.id != null ? String(req.body.id) : '';
+  const done = req.body?.done === true || req.body?.done === 'true';
+  if (!id) return res.status(400).json({ error: 'Missing video id.' });
+  try {
+    await setDone(id, done);
+    res.json({ success: true, id, done });
+  } catch (err) {
+    console.error('✗ Could not update done mark:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // List the profiles the current token can upload to (for the dropdown).
 app.get('/api/profiles', async (req, res) => {
   try {

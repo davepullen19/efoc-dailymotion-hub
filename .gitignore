@@ -3,4 +3,5 @@ node_modules/
 uploads/
 *.log
 videos-cache.json
+done.json
 .vercel

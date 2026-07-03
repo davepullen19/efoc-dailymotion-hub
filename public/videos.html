@@ -45,6 +45,17 @@
     tbody tr.dnp td { background: #fef3f2; color: #b42318; }
     tbody tr.dnp:hover td { background: #fee4e2; }
     tbody tr.dnp code.id { background: #fee4e2; color: #b42318; }
+    tbody tr.done td { background: #ecfdf3; color: #087443; }
+    tbody tr.done:hover td { background: #d1fadf; }
+    tbody tr.done td.title { text-decoration: line-through; opacity: .75; }
+    /* When a video is both DNP and done, "done" wins visually. */
+    tbody tr.done.dnp td { background: #ecfdf3; color: #087443; }
+    .done-toggle {
+      padding: .3rem .6rem; font-size: .78rem; background: #fff; color: var(--accent);
+      border: 1px solid var(--border); border-radius: 6px; cursor: pointer; white-space: nowrap;
+    }
+    .done-toggle.is-done { background: #067647; color: #fff; border-color: #067647; }
+    .done-toggle:disabled { opacity: .5; cursor: wait; }
     td.title { white-space: normal; min-width: 220px; font-weight: 600; }
     td.tags { white-space: normal; max-width: 220px; }
     .tag { display: inline-block; background: #f2f4f7; color: #475467; border-radius: 6px; padding: .1rem .4rem; margin: 0 .2rem .2rem 0; font-size: .75rem; }
@@ -99,6 +110,10 @@
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+    // Video ids marked "done" — loaded from the server so it's shared and
+    // survives re-pulls from Dailymotion.
+    let doneSet = new Set();
+
     function fmtDuration(secs) {
       if (!secs && secs !== 0) return '—';
       const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60);
@@ -133,8 +148,11 @@
     const isDNP = (title) => /(^|[^a-z])DNP([^a-z]|$)/i.test(String(title || ''));
 
     function rowFor(v) {
+      const done = doneSet.has(String(v.id));
+      const cls = [isDNP(v.title) ? 'dnp' : '', done ? 'done' : ''].filter(Boolean).join(' ');
       return `
-        <tr${isDNP(v.title) ? ' class="dnp"' : ''}>
+        <tr${cls ? ` class="${cls}"` : ''} data-row-id="${esc(v.id)}">
+          <td><button class="done-toggle${done ? ' is-done' : ''}" data-id="${esc(v.id)}">${done ? '✓ Done' : 'Mark done'}</button></td>
           <td><div class="id-cell"><code class="id">${esc(v.id)}</code>
             <button class="copy" data-id="${esc(v.id)}" title="Copy media ID">Copy</button></div></td>
           <td class="title">${esc(v.title) || '<span class="muted">(untitled)</span>'}</td>
@@ -156,7 +174,7 @@
         <div class="table-wrap">
           <table>
             <thead><tr>
-              <th>Media ID</th><th>Title</th><th>Channel</th><th>Duration</th><th>Created</th>
+              <th>Done</th><th>Media ID</th><th>Title</th><th>Channel</th><th>Duration</th><th>Created</th>
               <th>Views</th><th>Visibility</th><th>Kids</th><th>Status</th><th>Tags</th><th>Owner</th><th>Links</th>
             </tr></thead>
             <tbody>${videos.map(rowFor).join('')}</tbody>
@@ -186,6 +204,43 @@
           ${tableFor(groups[name])}
         </section>`).join('');
     }
+
+    // Toggle "done" (event delegation across all tables). Optimistic UI:
+    // flip the styling immediately, then persist; revert on failure.
+    results.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.done-toggle');
+      if (!btn) return;
+      const id = String(btn.dataset.id);
+      const makeDone = !doneSet.has(id);
+      const row = btn.closest('tr');
+
+      btn.disabled = true;
+      // Apply optimistically.
+      if (makeDone) doneSet.add(id); else doneSet.delete(id);
+      row.classList.toggle('done', makeDone);
+      btn.classList.toggle('is-done', makeDone);
+      btn.textContent = makeDone ? '✓ Done' : 'Mark done';
+
+      try {
+        const res = await fetch('/api/done', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, done: makeDone }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+      } catch (err) {
+        // Revert.
+        if (makeDone) doneSet.delete(id); else doneSet.add(id);
+        row.classList.toggle('done', !makeDone);
+        btn.classList.toggle('is-done', !makeDone);
+        btn.textContent = !makeDone ? '✓ Done' : 'Mark done';
+        status.className = 'err';
+        status.textContent = '❌ Could not save: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     // Copy-to-clipboard (event delegation across all tables).
     results.addEventListener('click', async (e) => {
@@ -224,9 +279,17 @@
       results.innerHTML = '';
       try {
         const url = '/api/videos' + (refresh ? '/refresh' : '') + '?tag=' + encodeURIComponent(tag);
-        const res = await fetch(url, { method: refresh ? 'POST' : 'GET' });
+        // Load the videos and the shared "done" set together.
+        const [res, doneRes] = await Promise.all([
+          fetch(url, { method: refresh ? 'POST' : 'GET' }),
+          fetch('/api/done'),
+        ]);
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
+        try {
+          const dd = await doneRes.json();
+          if (Array.isArray(dd.done)) doneSet = new Set(dd.done.map(String));
+        } catch { /* non-fatal: fall back to showing nothing as done */ }
         setBusy(false);
         showMeta(data);
         render(data.videos);

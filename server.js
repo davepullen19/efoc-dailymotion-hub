@@ -21,6 +21,7 @@ const AUTH_URL = `${BASE}/rest/auth`;
 const UPLOAD_URL_ENDPOINT = `${BASE}/rest/file/upload`;
 
 const app = express();
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 // Write temp uploads to the OS temp dir — the project dir is read-only on Vercel.
 const upload = multer({ dest: os.tmpdir() });
@@ -294,7 +295,7 @@ async function refreshTag(tag) {
 // GET = serve from cache; only fetch from Dailymotion the first time a tag is
 // requested (or after a cold start on Vercel, when memory is empty).
 app.get('/api/videos', async (req, res) => {
-  const tag = (req.query.tag || 'EFOC2026').toString().trim();
+  const tag = (req.query.tag || 'EFOC26').toString().trim();
   const key = tag.replace(/^#/, '').toLowerCase();
   try {
     let entry = readEntry(key);
@@ -312,7 +313,7 @@ app.get('/api/videos', async (req, res) => {
 
 // POST = force a fresh fetch from Dailymotion and update the cache.
 app.post('/api/videos/refresh', async (req, res) => {
-  const tag = (req.query.tag || 'EFOC2026').toString().trim();
+  const tag = (req.query.tag || 'EFOC26').toString().trim();
   const key = tag.replace(/^#/, '').toLowerCase();
   try {
     const entry = await refreshTag(tag);
@@ -335,6 +336,72 @@ app.get('/api/profiles', async (req, res) => {
   }
 });
 
+// Hand the browser a one-time upload URL so it can POST the file straight to
+// Dailymotion (with progress), instead of routing the bytes through us.
+app.get('/api/upload-url', async (req, res) => {
+  try {
+    if (!DM_API_KEY || !DM_API_SECRET) {
+      throw new Error('Set DM_API_KEY and DM_API_SECRET in your .env file.');
+    }
+    const { token } = await authenticate();
+    const uploadUrl = await getUploadUrl(token);
+    res.json({ uploadUrl });
+  } catch (err) {
+    console.error('✗ Could not get upload URL:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create the video from a file URL the browser already uploaded to Dailymotion.
+app.post('/api/create-video', async (req, res) => {
+  const { fileUrl, profileId } = req.body || {};
+  const fields = {
+    title: req.body.title,
+    channel: req.body.channel,
+    description: req.body.description,
+    tags: req.body.tags,
+    published: req.body.published === true || req.body.published === 'true',
+    private: req.body.private === true || req.body.private === 'true',
+    is_created_for_kids:
+      req.body.is_created_for_kids === true || req.body.is_created_for_kids === 'true',
+  };
+
+  try {
+    if (!DM_API_KEY || !DM_API_SECRET) {
+      throw new Error('Set DM_API_KEY and DM_API_SECRET in your .env file.');
+    }
+    if (!fileUrl) throw new Error('Missing uploaded file URL.');
+    if (!fields.title || !fields.channel) {
+      throw new Error('Title and channel are required.');
+    }
+
+    const { token, org } = await authenticate();
+
+    // Validate the chosen destination against the configured profiles.
+    const profiles = listProfiles(org);
+    const target =
+      profiles.find((p) => p.id === profileId) || (profileId ? null : org);
+    if (!target) throw new Error('Please choose a valid profile to upload to.');
+    const label = target.screenname || target.username;
+    console.log(`Creating video for: ${label} (${target.id})`);
+
+    const video = await createVideo(token, target.id, fileUrl, fields);
+    console.log(`    ✓ created video ${video.id}`);
+
+    res.json({
+      success: true,
+      id: video.id,
+      watch: `https://www.dailymotion.com/video/${video.id}`,
+      owner: { id: target.id, username: target.username, screenname: target.screenname },
+    });
+  } catch (err) {
+    console.error('✗ Video creation failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Legacy path: browser uploads the file to us and we forward it to Dailymotion.
+// Kept as a fallback; the primary flow now uploads directly from the browser.
 app.post('/api/upload', upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No video file provided.' });
 

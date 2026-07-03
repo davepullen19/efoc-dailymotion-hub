@@ -37,6 +37,24 @@
     #status.ok { background: #ecfdf3; color: #067647; display: block; }
     #status.err { background: #fef3f2; color: #b42318; display: block; }
     #status a { color: inherit; font-weight: 600; }
+    #progress { margin-top: 1.25rem; display: none; }
+    #progress.show { display: block; }
+    .bar { height: 10px; background: #eaecf0; border-radius: 999px; overflow: hidden; }
+    .bar > span {
+      display: block; height: 100%; width: 0%; background: var(--accent);
+      border-radius: 999px; transition: width .15s ease;
+    }
+    .bar.indeterminate > span {
+      width: 40%; background: var(--accent);
+      animation: slide 1.1s ease-in-out infinite;
+    }
+    @keyframes slide {
+      0% { margin-left: -40%; } 100% { margin-left: 100%; }
+    }
+    .bar-meta {
+      display: flex; justify-content: space-between; margin-top: .4rem;
+      font-size: .82rem; color: #667085;
+    }
   </style>
 </head>
 <body>
@@ -92,6 +110,14 @@
       <button type="submit" id="btn">Upload video</button>
     </form>
 
+    <div id="progress">
+      <div class="bar" id="bar"><span id="barFill"></span></div>
+      <div class="bar-meta">
+        <span id="barPct">0%</span>
+        <span id="barSpeed"></span>
+      </div>
+    </div>
+
     <div id="status"></div>
   </div>
 
@@ -100,6 +126,19 @@
     const btn = document.getElementById('btn');
     const status = document.getElementById('status');
     const profile = document.getElementById('profile');
+    const progress = document.getElementById('progress');
+    const bar = document.getElementById('bar');
+    const barFill = document.getElementById('barFill');
+    const barPct = document.getElementById('barPct');
+    const barSpeed = document.getElementById('barSpeed');
+
+    const fmtBytes = (n) => {
+      if (n < 1024) return n + ' B';
+      const units = ['KB', 'MB', 'GB', 'TB'];
+      let i = -1;
+      do { n /= 1024; i++; } while (n >= 1024 && i < units.length - 1);
+      return n.toFixed(n < 10 ? 1 : 0) + ' ' + units[i];
+    };
 
     // Load the profiles this API key can upload to.
     (async () => {
@@ -117,27 +156,102 @@
       }
     })();
 
+    // POST the file straight to Dailymotion's upload URL, reporting live
+    // percent + speed. Resolves with the hosted file URL.
+    function uploadToDailymotion(uploadUrl, file) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl);
+
+        const startedAt = Date.now();
+        xhr.upload.addEventListener('progress', (ev) => {
+          if (!ev.lengthComputable) return;
+          const pct = Math.round((ev.loaded / ev.total) * 100);
+          barFill.style.width = pct + '%';
+          barPct.textContent = pct + '%';
+
+          const elapsed = (Date.now() - startedAt) / 1000;
+          if (elapsed > 0) {
+            barSpeed.textContent = fmtBytes(ev.loaded / elapsed) + '/s';
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          let data = {};
+          try { data = JSON.parse(xhr.responseText); } catch {}
+          if (xhr.status >= 200 && xhr.status < 300 && data.url) {
+            resolve(data.url);
+          } else {
+            reject(new Error(data.error?.message || data.message || `Upload failed (HTTP ${xhr.status})`));
+          }
+        });
+        xhr.addEventListener('error', () => reject(new Error('Network error during upload.')));
+
+        const fd = new FormData();
+        fd.append('file', file);
+        xhr.send(fd);
+      });
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const file = form.querySelector('input[name=video]').files[0];
+      if (!file) return;
+
       btn.disabled = true;
-      btn.textContent = 'Uploading… (this can take a while)';
+      btn.textContent = 'Uploading…';
       status.className = '';
       status.style.display = 'none';
 
+      // Reset + show the progress bar.
+      progress.classList.add('show');
+      bar.classList.remove('indeterminate');
+      barFill.style.width = '0%';
+      barPct.textContent = '0%';
+      barSpeed.textContent = '';
+
       try {
-        const res = await fetch('/api/upload', { method: 'POST', body: new FormData(form) });
+        // 1. Ask our server for a one-time Dailymotion upload URL.
+        const urlRes = await (await fetch('/api/upload-url')).json();
+        if (urlRes.error) throw new Error(urlRes.error);
+
+        // 2. Upload the file directly to Dailymotion (this is the tracked leg).
+        const fileUrl = await uploadToDailymotion(urlRes.uploadUrl, file);
+
+        // 3. Hosted; now our server creates + publishes the video.
+        barFill.style.width = '100%';
+        barPct.textContent = '100%';
+        bar.classList.add('indeterminate');
+        barSpeed.textContent = '';
+        btn.textContent = 'Publishing…';
+
+        const res = await fetch('/api/create-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileUrl,
+            profileId: form.profileId.value,
+            title: form.title.value,
+            channel: form.channel.value,
+            description: form.description.value,
+            tags: form.tags.value,
+            published: form.published.checked,
+            private: form.private.checked,
+            is_created_for_kids: form.is_created_for_kids.checked,
+          }),
+        });
         const data = await res.json();
-        if (data.success) {
-          status.className = 'ok';
-          const owner = data.owner ? ` to <strong>${data.owner.screenname || data.owner.username}</strong>` : '';
-          status.innerHTML = `✅ Uploaded${owner}! Video ID <strong>${data.id}</strong> — <a href="${data.watch}" target="_blank">watch it</a>`;
-        } else {
-          throw new Error(data.error || 'Unknown error');
-        }
+        if (!data.success) throw new Error(data.error || 'Unknown error');
+
+        status.className = 'ok';
+        const owner = data.owner ? ` to <strong>${data.owner.screenname || data.owner.username}</strong>` : '';
+        status.innerHTML = `✅ Uploaded${owner}! Video ID <strong>${data.id}</strong> — <a href="${data.watch}" target="_blank">watch it</a>`;
       } catch (err) {
         status.className = 'err';
         status.textContent = '❌ ' + err.message;
       } finally {
+        progress.classList.remove('show');
+        bar.classList.remove('indeterminate');
         btn.disabled = false;
         btn.textContent = 'Upload video';
       }

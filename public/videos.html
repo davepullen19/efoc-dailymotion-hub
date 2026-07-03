@@ -74,7 +74,7 @@
     <div class="controls">
       <div>
         <label for="tag">Tag</label>
-        <input type="text" id="tag" value="EFOC2026" placeholder="EFOC2026" />
+        <input type="text" id="tag" value="EFOC26" placeholder="EFOC26" />
       </div>
       <button id="load">Load</button>
       <button id="refresh" class="secondary" title="Re-fetch from Dailymotion">↻ Refresh from Dailymotion</button>
@@ -210,7 +210,7 @@
     }
 
     async function fetchVideos({ refresh }) {
-      const tag = tagInput.value.trim() || 'EFOC2026';
+      const tag = tagInput.value.trim() || 'EFOC26';
       setBusy(true, refresh ? 'Re-fetching from Dailymotion…' : 'Loading…');
       meta.textContent = '';
       results.innerHTML = '';
@@ -232,7 +232,7 @@
     loadBtn.addEventListener('click', () => fetchVideos({ refresh: false }));
     refreshBtn.addEventListener('click', () => fetchVideos({ refresh: true }));
     tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchVideos({ refresh: false }); });
-    fetchVideos({ refresh: false }); // load #EFOC2026 from cache on open
+    fetchVideos({ refresh: false }); // load #EFOC26 from cache on open
   </script>
 </body>
 </html>

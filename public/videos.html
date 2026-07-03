@@ -78,6 +78,12 @@
       border: 0; border-radius: 6px; cursor: pointer; white-space: nowrap;
     }
     .publish-btn:disabled { opacity: .6; cursor: wait; }
+    .delete-btn {
+      padding: .3rem .6rem; font-size: .78rem; background: #fff; color: #b42318;
+      border: 1px solid #fecdca; border-radius: 6px; cursor: pointer; white-space: nowrap;
+    }
+    .delete-btn:hover { background: #fef3f2; }
+    .delete-btn:disabled { opacity: .6; cursor: wait; }
     td.title { white-space: normal; min-width: 220px; font-weight: 600; }
     td.tags { white-space: normal; max-width: 220px; }
     .tag { display: inline-block; background: #f2f4f7; color: #475467; border-radius: 6px; padding: .1rem .4rem; margin: 0 .2rem .2rem 0; font-size: .75rem; }
@@ -200,6 +206,7 @@
           <td class="tags">${tagChips(v.tags)}</td>
           <td>${v.url ? `<a class="watch" href="${esc(v.url)}" target="_blank" rel="noopener">Watch ↗</a>` : '—'}</td>
           <td>${isPublic(v) ? '<span class="muted">—</span>' : `<button class="publish-btn" data-id="${esc(v.id)}">Publish</button>`}</td>
+          <td><button class="delete-btn" data-id="${esc(v.id)}">Delete</button></td>
         </tr>`;
     }
 
@@ -209,7 +216,7 @@
           <table>
             <thead><tr>
               <th>Done</th><th>Media ID</th><th>Title</th><th>Duration</th><th>Created</th>
-              <th>Views</th><th>Visibility</th><th>Tags</th><th>Links</th><th>Publish</th>
+              <th>Views</th><th>Visibility</th><th>Tags</th><th>Links</th><th>Publish</th><th>Delete</th>
             </tr></thead>
             <tbody>${videos.map(rowFor).join('')}</tbody>
           </table>
@@ -385,6 +392,42 @@
         btn.textContent = 'Publish';
         status.className = 'err';
         status.textContent = '❌ Could not publish: ' + err.message;
+      }
+    });
+
+    // Permanently delete a video from Dailymotion (event delegation).
+    // Requires an explicit confirmation — deletion cannot be undone.
+    results.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.delete-btn');
+      if (!btn) return;
+      const id = String(btn.dataset.id);
+      const v = allVideos.find((x) => String(x.id) === id);
+      const title = (v && v.title) ? v.title : id;
+      const ok = window.confirm(
+        `Permanently DELETE this video from Dailymotion?\n\n“${title}”\n(id: ${id})\n\n` +
+        `⚠️ This cannot be undone. Once it's gone, it's gone — the video is removed from Dailymotion for everyone.`
+      );
+      if (!ok) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+      status.className = 'info';
+      status.textContent = 'Deleting from Dailymotion…';
+      try {
+        const res = await fetch('/api/videos/' + encodeURIComponent(id), { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        // Drop it from the list + any done mark, then re-render.
+        allVideos = allVideos.filter((x) => String(x.id) !== id);
+        doneSet.delete(id);
+        render();
+        status.className = 'info';
+        status.textContent = '🗑️ Deleted from Dailymotion.';
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+        status.className = 'err';
+        status.textContent = '❌ Could not delete: ' + err.message;
       }
     });
 

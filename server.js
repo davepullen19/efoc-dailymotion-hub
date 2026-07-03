@@ -184,6 +184,21 @@ async function publishVideo(token, id) {
   return data;
 }
 
+/** Permanently delete a video from Dailymotion. */
+async function deleteVideo(token, id) {
+  const res = await fetch(`${BASE}/rest/video/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  // A successful delete may come back as 204 No Content or an empty body.
+  if (res.status === 204) return {};
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+  if (!res.ok) throw new Error(`Delete failed: ${describe(data)}`);
+  return data;
+}
+
 // The video fields we pull back for the browse/table view.
 const VIDEO_FIELDS = [
   'id', 'title', 'description', 'tags', 'channel', 'duration', 'created_time',
@@ -375,6 +390,34 @@ async function updateStoredVideo(id, patch) {
   if (touched) writeCache(cache);
 }
 
+/** Remove a video from our stored copy after it's deleted on Dailymotion. */
+async function deleteStoredVideo(id) {
+  const sid = String(id);
+  if (KV_ENABLED) {
+    const client = await kvClient();
+    // Drop the record and any done mark. The per-tag index sets are reconciled
+    // on the next refresh; until then reads filter out the missing record.
+    await client.del(videoRecKey(sid));
+    await client.srem(DONE_KEY, sid);
+    return;
+  }
+  for (const entry of memCache.values()) {
+    entry.videos = (entry.videos || []).filter((x) => String(x.id) !== sid);
+  }
+  const cache = readCache();
+  let touched = false;
+  for (const key of Object.keys(cache)) {
+    const before = (cache[key].videos || []).length;
+    cache[key].videos = (cache[key].videos || []).filter((x) => String(x.id) !== sid);
+    if (cache[key].videos.length !== before) touched = true;
+  }
+  if (touched) writeCache(cache);
+  const ids = await getDoneIds();
+  if (ids.delete(sid)) {
+    try { fs.writeFileSync(DONE_FILE, JSON.stringify([...ids], null, 2)); } catch { /* read-only fs */ }
+  }
+}
+
 // GET = serve from cache; only fetch from Dailymotion the first time a tag is
 // requested (or after a cold start on Vercel, when memory is empty).
 app.get('/api/videos', async (req, res) => {
@@ -507,6 +550,24 @@ app.post('/api/publish', async (req, res) => {
     res.json({ success: true, id, video });
   } catch (err) {
     console.error('✗ Publish failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Permanently delete a video from Dailymotion, then drop our stored copy.
+app.delete('/api/videos/:id', async (req, res) => {
+  const id = String(req.params.id || '');
+  if (!id) return res.status(400).json({ error: 'Missing video id.' });
+  try {
+    if (!DM_API_KEY || !DM_API_SECRET) {
+      throw new Error('Set DM_API_KEY and DM_API_SECRET in your .env file.');
+    }
+    const { token } = await authenticate();
+    await deleteVideo(token, id);
+    await deleteStoredVideo(id);
+    res.json({ success: true, id });
+  } catch (err) {
+    console.error('✗ Delete failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

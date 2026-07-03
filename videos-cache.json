@@ -1,7 +1,7 @@
 {
   "efoc2026": {
     "tag": "efoc2026",
-    "cachedAt": "2026-07-03T01:14:09.257Z",
+    "cachedAt": "2026-07-03T01:24:28.225Z",
     "videos": [
       {
         "id": "xakhrtq",
@@ -21,7 +21,7 @@
         "status": "published",
         "url": "https://www.dailymotion.com/video/xakhrtq",
         "embed_url": "https://geo.dailymotion.com/player.html?video=xakhrtq",
-        "thumbnail_240_url": "https://s2.dmcdn.net/v/c5wCU1gHml_8e7jHH/x240",
+        "thumbnail_240_url": "https://s1.dmcdn.net/v/c5wCU1gHml_8e7jHH/x240",
         "owner.id": "x4fnf6g",
         "owner.screenname": "Essence Virtual Events",
         "stage": "GBEF-Summit"

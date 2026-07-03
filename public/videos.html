@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dailymotion — Tagged Videos</title>
+  <style>
+    :root { --bg: #0a0a23; --accent: #0066dc; --border: #d0d5dd; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f7fa; color: #1a1a2e; margin: 0; padding: 2rem;
+    }
+    .card {
+      max-width: 1200px; margin: 0 auto; background: #fff; padding: 2rem;
+      border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.06);
+    }
+    .top { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    h1 { margin-top: 0; font-size: 1.4rem; }
+    p.sub { color: #667085; margin-top: -.5rem; font-size: .9rem; }
+    a.nav { color: var(--accent); font-weight: 600; font-size: .9rem; text-decoration: none; }
+    .controls { display: flex; gap: .5rem; align-items: flex-end; margin: 1rem 0 .5rem; flex-wrap: wrap; }
+    .controls label { display: block; font-weight: 600; margin-bottom: .35rem; font-size: .85rem; }
+    input[type=text] {
+      padding: .55rem .7rem; border: 1px solid var(--border); border-radius: 8px;
+      font-size: .95rem; font-family: inherit; min-width: 200px;
+    }
+    button {
+      padding: .6rem 1rem; background: var(--accent); color: #fff; border: 0;
+      border-radius: 8px; font-size: .95rem; font-weight: 600; cursor: pointer;
+    }
+    button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--border); }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .meta { color: #667085; font-size: .85rem; margin: .25rem 0 1.25rem; }
+    section.stage { margin-bottom: 2rem; }
+    section.stage h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: center; gap: .5rem; }
+    .gcount { background: #eef2ff; color: #3538cd; border-radius: 999px; padding: .05rem .55rem; font-size: .8rem; font-weight: 700; }
+    .no-stage h2 { color: #98a2b3; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+    th, td { text-align: left; padding: .6rem .7rem; border-bottom: 1px solid #eaecf0; vertical-align: top; white-space: nowrap; }
+    th { background: #f9fafb; font-weight: 600; color: #475467; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #fafbfc; }
+    td.title { white-space: normal; min-width: 220px; font-weight: 600; }
+    td.tags { white-space: normal; max-width: 220px; }
+    .tag { display: inline-block; background: #f2f4f7; color: #475467; border-radius: 6px; padding: .1rem .4rem; margin: 0 .2rem .2rem 0; font-size: .75rem; }
+    .tag.stage-tag { background: #eef2ff; color: #3538cd; font-weight: 600; }
+    .id-cell { display: flex; align-items: center; gap: .4rem; }
+    code.id { background: #f2f4f7; padding: .15rem .4rem; border-radius: 6px; font-size: .8rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .copy { padding: .25rem .5rem; font-size: .75rem; background: #fff; color: var(--accent); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+    .copy.copied { background: #ecfdf3; color: #067647; border-color: #a6f4c5; }
+    .pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+    .pill.private { background: #fef3f2; color: #b42318; }
+    .pill.public { background: #ecfdf3; color: #067647; }
+    .pill.draft { background: #fffaeb; color: #b54708; }
+    .muted { color: #98a2b3; }
+    a.watch { color: var(--accent); text-decoration: none; font-weight: 600; }
+    #status { margin-top: 1rem; padding: .85rem 1rem; border-radius: 8px; display: none; font-size: .9rem; }
+    #status.err { background: #fef3f2; color: #b42318; display: block; }
+    #status.info { background: #eff8ff; color: #175cd3; display: block; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="top">
+      <div>
+        <h1>Tagged videos</h1>
+        <p class="sub">Videos carrying a tag, grouped by <code>stage:&lt;name&gt;</code>. Cached — use Refresh to re-pull.</p>
+      </div>
+      <a class="nav" href="/">← Upload a video</a>
+    </div>
+
+    <div class="controls">
+      <div>
+        <label for="tag">Tag</label>
+        <input type="text" id="tag" value="EFOC2026" placeholder="EFOC2026" />
+      </div>
+      <button id="load">Load</button>
+      <button id="refresh" class="secondary" title="Re-fetch from Dailymotion">↻ Refresh from Dailymotion</button>
+    </div>
+
+    <div class="meta" id="meta"></div>
+    <div id="results"></div>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const tagInput = document.getElementById('tag');
+    const loadBtn = document.getElementById('load');
+    const refreshBtn = document.getElementById('refresh');
+    const results = document.getElementById('results');
+    const meta = document.getElementById('meta');
+    const status = document.getElementById('status');
+
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function fmtDuration(secs) {
+      if (!secs && secs !== 0) return '—';
+      const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60);
+      const pad = (n) => String(n).padStart(2, '0');
+      return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+    }
+
+    function fmtDate(unix) {
+      if (!unix) return '—';
+      return new Date(unix * 1000).toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+    }
+
+    function visibilityPill(v) {
+      if (v.private) return '<span class="pill private">Private</span>';
+      if (v.published) return '<span class="pill public">Public</span>';
+      return '<span class="pill draft">Unpublished</span>';
+    }
+
+    function tagChips(tags) {
+      if (!tags || !tags.length) return '<span class="muted">—</span>';
+      return tags.map((t) => {
+        const isStage = /^stage:/i.test(t);
+        return `<span class="tag${isStage ? ' stage-tag' : ''}">${esc(t)}</span>`;
+      }).join('');
+    }
+
+    function rowFor(v) {
+      return `
+        <tr>
+          <td><div class="id-cell"><code class="id">${esc(v.id)}</code>
+            <button class="copy" data-id="${esc(v.id)}" title="Copy media ID">Copy</button></div></td>
+          <td class="title">${esc(v.title) || '<span class="muted">(untitled)</span>'}</td>
+          <td>${esc(v.channel) || '—'}</td>
+          <td>${fmtDuration(v.duration)}</td>
+          <td>${esc(fmtDate(v.created_time))}</td>
+          <td>${v.views_total != null ? Number(v.views_total).toLocaleString() : '—'}</td>
+          <td>${visibilityPill(v)}</td>
+          <td>${v.is_created_for_kids ? 'Yes' : 'No'}</td>
+          <td>${esc(v.status) || '—'}</td>
+          <td class="tags">${tagChips(v.tags)}</td>
+          <td>${esc(v['owner.screenname'] || (v.owner && v.owner.screenname) || v['owner.id'] || '—')}</td>
+          <td>${v.url ? `<a class="watch" href="${esc(v.url)}" target="_blank" rel="noopener">Watch ↗</a>` : '—'}</td>
+        </tr>`;
+    }
+
+    function tableFor(videos) {
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Media ID</th><th>Title</th><th>Channel</th><th>Duration</th><th>Created</th>
+              <th>Views</th><th>Visibility</th><th>Kids</th><th>Status</th><th>Tags</th><th>Owner</th><th>Links</th>
+            </tr></thead>
+            <tbody>${videos.map(rowFor).join('')}</tbody>
+          </table>
+        </div>`;
+    }
+
+    function render(videos) {
+      if (!videos.length) {
+        results.innerHTML = '<p class="muted">No videos found for this tag.</p>';
+        return;
+      }
+      // Group by the parsed stage; videos with no stage go last.
+      const groups = {};
+      for (const v of videos) {
+        const s = v.stage && v.stage.trim() ? v.stage.trim() : 'No stage';
+        (groups[s] = groups[s] || []).push(v);
+      }
+      const names = Object.keys(groups).sort((a, b) => {
+        if (a === 'No stage') return 1;
+        if (b === 'No stage') return -1;
+        return a.localeCompare(b, undefined, { numeric: true });
+      });
+      results.innerHTML = names.map((name) => `
+        <section class="stage${name === 'No stage' ? ' no-stage' : ''}">
+          <h2>${name === 'No stage' ? 'No stage' : 'Stage: ' + esc(name)} <span class="gcount">${groups[name].length}</span></h2>
+          ${tableFor(groups[name])}
+        </section>`).join('');
+    }
+
+    // Copy-to-clipboard (event delegation across all tables).
+    results.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.copy');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      try {
+        await navigator.clipboard.writeText(id);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = id; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+      }
+      const orig = btn.textContent;
+      btn.textContent = 'Copied ✓';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    });
+
+    function setBusy(busy, verb) {
+      loadBtn.disabled = refreshBtn.disabled = busy;
+      if (busy) { status.className = 'info'; status.textContent = verb; }
+      else { status.style.display = 'none'; }
+    }
+
+    function showMeta(data) {
+      const when = data.cachedAt ? new Date(data.cachedAt).toLocaleString() : 'unknown';
+      const src = data.cached ? 'from cache' : 'freshly fetched';
+      meta.innerHTML = `${data.count} video${data.count === 1 ? '' : 's'} tagged <strong>#${esc(data.tag)}</strong> — last updated ${esc(when)} (${src}).`;
+    }
+
+    async function fetchVideos({ refresh }) {
+      const tag = tagInput.value.trim() || 'EFOC2026';
+      setBusy(true, refresh ? 'Re-fetching from Dailymotion…' : 'Loading…');
+      meta.textContent = '';
+      results.innerHTML = '';
+      try {
+        const url = '/api/videos' + (refresh ? '/refresh' : '') + '?tag=' + encodeURIComponent(tag);
+        const res = await fetch(url, { method: refresh ? 'POST' : 'GET' });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
+        setBusy(false);
+        showMeta(data);
+        render(data.videos);
+      } catch (err) {
+        loadBtn.disabled = refreshBtn.disabled = false;
+        status.className = 'err';
+        status.textContent = '❌ ' + err.message;
+      }
+    }
+
+    loadBtn.addEventListener('click', () => fetchVideos({ refresh: false }));
+    refreshBtn.addEventListener('click', () => fetchVideos({ refresh: true }));
+    tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchVideos({ refresh: false }); });
+    fetchVideos({ refresh: false }); // load #EFOC2026 from cache on open
+  </script>
+</body>
+</html>

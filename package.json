@@ -1,0 +1,19 @@
+{
+  "name": "dailymotion-uploader",
+  "version": "1.0.0",
+  "description": "A very simple app to upload videos to Dailymotion via the API",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "form-data": "^4.0.0",
+    "multer": "^1.4.5-lts.1"
+  }
+}

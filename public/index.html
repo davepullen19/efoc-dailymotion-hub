@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dailymotion Uploader</title>
+  <style>
+    :root { --bg: #0a0a23; --accent: #0066dc; --border: #d0d5dd; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f7fa; color: #1a1a2e; margin: 0; padding: 2rem;
+    }
+    .card {
+      max-width: 640px; margin: 0 auto; background: #fff; padding: 2rem;
+      border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.06);
+    }
+    h1 { margin-top: 0; font-size: 1.4rem; }
+    p.sub { color: #667085; margin-top: -.5rem; font-size: .9rem; }
+    label { display: block; font-weight: 600; margin: 1rem 0 .35rem; font-size: .9rem; }
+    input[type=text], input[type=file], textarea, select {
+      width: 100%; padding: .6rem .7rem; border: 1px solid var(--border);
+      border-radius: 8px; font-size: .95rem; font-family: inherit;
+    }
+    textarea { min-height: 80px; resize: vertical; }
+    .checks { margin-top: 1rem; }
+    .checks label { display: flex; align-items: center; gap: .5rem; font-weight: 500; }
+    .checks input { width: auto; }
+    button {
+      margin-top: 1.5rem; width: 100%; padding: .8rem; background: var(--accent);
+      color: #fff; border: 0; border-radius: 8px; font-size: 1rem; font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .req { color: #d92d20; }
+    #status { margin-top: 1.25rem; padding: .85rem 1rem; border-radius: 8px; display: none; font-size: .9rem; }
+    #status.ok { background: #ecfdf3; color: #067647; display: block; }
+    #status.err { background: #fef3f2; color: #b42318; display: block; }
+    #status a { color: inherit; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Upload to Dailymotion</h1>
+    <p class="sub">A simple demo of the Dailymotion Partner API upload flow.
+      &nbsp;·&nbsp; <a href="/videos.html">Browse tagged videos →</a></p>
+
+    <form id="form">
+      <label>Upload to profile <span class="req">*</span></label>
+      <select name="profileId" id="profile" required>
+        <option value="">Loading profiles…</option>
+      </select>
+
+      <label>Video file <span class="req">*</span></label>
+      <input type="file" name="video" accept="video/*" required />
+
+      <label>Title <span class="req">*</span></label>
+      <input type="text" name="title" maxlength="255" required />
+
+      <label>Channel (category) <span class="req">*</span></label>
+      <select name="channel" required>
+        <option value="">Select a channel…</option>
+        <option value="news">News &amp; Politics</option>
+        <option value="tv">TV &amp; Comedy</option>
+        <option value="music">Music</option>
+        <option value="sport">Sport</option>
+        <option value="videogames">Video Games</option>
+        <option value="fun">Fun &amp; Entertainment</option>
+        <option value="tech">Tech &amp; Science</option>
+        <option value="auto">Cars &amp; Vehicles</option>
+        <option value="lifestyle">Lifestyle &amp; How-to</option>
+        <option value="travel">Travel</option>
+        <option value="animals">Animals</option>
+        <option value="people">People &amp; Blogs</option>
+        <option value="shortfilms">Movies &amp; Short Films</option>
+        <option value="creation">Creative</option>
+        <option value="kids">Kids</option>
+      </select>
+
+      <label>Description</label>
+      <textarea name="description" maxlength="3000"></textarea>
+
+      <label>Tags (comma-separated)</label>
+      <input type="text" name="tags" placeholder="funny, cats, tutorial" />
+
+      <div class="checks">
+        <label><input type="checkbox" name="published" checked /> Published (embeddable / visible)</label>
+        <label><input type="checkbox" name="private" /> Private (restricted access)</label>
+        <label><input type="checkbox" name="is_created_for_kids" /> Made for kids (COPPA/GDPR)</label>
+      </div>
+
+      <button type="submit" id="btn">Upload video</button>
+    </form>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById('form');
+    const btn = document.getElementById('btn');
+    const status = document.getElementById('status');
+    const profile = document.getElementById('profile');
+
+    // Load the profiles this API key can upload to.
+    (async () => {
+      try {
+        const { profiles, error } = await (await fetch('/api/profiles')).json();
+        if (error) throw new Error(error);
+        profile.innerHTML = '<option value="">Select a profile…</option>' +
+          profiles.map(p =>
+            `<option value="${p.id}">${p.screenname || p.username} (${p.id})</option>`
+          ).join('');
+      } catch (err) {
+        profile.innerHTML = '<option value="">Could not load profiles</option>';
+        status.className = 'err';
+        status.textContent = '❌ Could not load profiles: ' + err.message;
+      }
+    })();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      btn.disabled = true;
+      btn.textContent = 'Uploading… (this can take a while)';
+      status.className = '';
+      status.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body: new FormData(form) });
+        const data = await res.json();
+        if (data.success) {
+          status.className = 'ok';
+          const owner = data.owner ? ` to <strong>${data.owner.screenname || data.owner.username}</strong>` : '';
+          status.innerHTML = `✅ Uploaded${owner}! Video ID <strong>${data.id}</strong> — <a href="${data.watch}" target="_blank">watch it</a>`;
+        } else {
+          throw new Error(data.error || 'Unknown error');
+        }
+      } catch (err) {
+        status.className = 'err';
+        status.textContent = '❌ ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Upload video';
+      }
+    });
+  </script>
+</body>
+</html>

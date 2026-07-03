@@ -3,6 +3,7 @@ import express from 'express';
 import multer from 'multer';
 import fs from 'node:fs';
 import { openAsBlob } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,7 +22,8 @@ const UPLOAD_URL_ENDPOINT = `${BASE}/rest/file/upload`;
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
-const upload = multer({ dest: path.join(__dirname, 'uploads') });
+// Write temp uploads to the OS temp dir — the project dir is read-only on Vercel.
+const upload = multer({ dest: os.tmpdir() });
 
 // Pull a human-readable message out of whatever shape Dailymotion returned.
 function describe(data) {
@@ -244,9 +246,13 @@ async function collectVideosByTag(tag) {
   );
 }
 
-// Cache the fetched videos to disk (keyed by tag) so we don't re-query
-// Dailymotion on every page load. Refreshed only on demand.
+// Cache the fetched videos, keyed by tag, so we don't re-query Dailymotion on
+// every page load. The in-memory Map is the source of truth (and the only
+// thing that works on Vercel, whose filesystem is read-only). We ALSO persist
+// to disk best-effort so a local `npm start` survives a restart — the write is
+// wrapped so a read-only FS (Vercel) just skips it silently.
 const CACHE_FILE = path.join(__dirname, 'videos-cache.json');
+const memCache = new Map(); // key -> { tag, cachedAt, videos }
 
 function readCache() {
   try {
@@ -259,29 +265,39 @@ function readCache() {
 function writeCache(cache) {
   try {
     fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
-  } catch (err) {
-    console.error(`⚠ could not write ${CACHE_FILE}: ${err.message}`);
+  } catch {
+    // Read-only filesystem (e.g. Vercel) — in-memory cache still applies.
   }
 }
 
-/** Fetch fresh, store in the cache under the (normalised) tag, and return it. */
+/** Read a tag's cache entry: memory first, then fall back to disk (local). */
+function readEntry(key) {
+  if (memCache.has(key)) return memCache.get(key);
+  const disk = readCache()[key];
+  if (disk) memCache.set(key, disk);
+  return disk || null;
+}
+
+/** Fetch fresh, store in memory + best-effort disk, and return the entry. */
 async function refreshTag(tag) {
   const key = tag.replace(/^#/, '').toLowerCase();
   const videos = await collectVideosByTag(tag);
   const cachedAt = new Date().toISOString();
+  const entry = { tag: key, cachedAt, videos };
+  memCache.set(key, entry);
   const cache = readCache();
-  cache[key] = { tag: key, cachedAt, videos };
+  cache[key] = entry;
   writeCache(cache);
-  return cache[key];
+  return entry;
 }
 
-// GET = serve from the on-disk cache; only fetch from Dailymotion the first
-// time a tag is requested (or when the cache file is missing).
+// GET = serve from cache; only fetch from Dailymotion the first time a tag is
+// requested (or after a cold start on Vercel, when memory is empty).
 app.get('/api/videos', async (req, res) => {
   const tag = (req.query.tag || 'EFOC2026').toString().trim();
   const key = tag.replace(/^#/, '').toLowerCase();
   try {
-    let entry = readCache()[key];
+    let entry = readEntry(key);
     let cached = true;
     if (!entry) {
       entry = await refreshTag(tag);
@@ -382,6 +398,13 @@ app.post('/api/upload', upload.single('video'), async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Dailymotion uploader running at http://localhost:${PORT}`);
-});
+// On Vercel the app runs as a serverless function (see api/index.js), so we
+// export it and skip listen(). Locally, `npm start` runs this file directly
+// and we bind the port as usual.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Dailymotion uploader running at http://localhost:${PORT}`);
+  });
+}
+
+export default app;

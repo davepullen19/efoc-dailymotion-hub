@@ -72,6 +72,12 @@
     }
     .done-toggle.is-done { background: #067647; color: #fff; border-color: #067647; }
     .done-toggle:disabled { opacity: .5; cursor: wait; }
+    .done-toggle .plus-public { display: block; font-size: .7rem; font-weight: 700; opacity: .8; }
+    .publish-btn {
+      padding: .3rem .6rem; font-size: .78rem; background: var(--accent); color: #fff;
+      border: 0; border-radius: 6px; cursor: pointer; white-space: nowrap;
+    }
+    .publish-btn:disabled { opacity: .6; cursor: wait; }
     td.title { white-space: normal; min-width: 220px; font-weight: 600; }
     td.tags { white-space: normal; max-width: 220px; }
     .tag { display: inline-block; background: #f2f4f7; color: #475467; border-radius: 6px; padding: .1rem .4rem; margin: 0 .2rem .2rem 0; font-size: .75rem; }
@@ -175,25 +181,25 @@
     // — so titles like "Sudnpost" don't trip it.
     const isDNP = (title) => /(^|[^a-z])DNP([^a-z]|$)/i.test(String(title || ''));
 
+    // A video is "public" once it's published and not private.
+    const isPublic = (v) => !v.private && v.published;
+
     function rowFor(v) {
       const done = doneSet.has(String(v.id));
       const cls = [isDNP(v.title) ? 'dnp' : '', done ? 'done' : ''].filter(Boolean).join(' ');
       return `
         <tr${cls ? ` class="${cls}"` : ''} data-row-id="${esc(v.id)}">
-          <td><button class="done-toggle${done ? ' is-done' : ''}" data-id="${esc(v.id)}">${done ? '✓ Done' : 'Mark done'}</button></td>
+          <td><button class="done-toggle${done ? ' is-done' : ''}" data-id="${esc(v.id)}">${done ? '✓ Done' : (isPublic(v) ? 'Mark done' : 'Mark done<br><span class="plus-public">+ public</span>')}</button></td>
           <td><div class="id-cell"><code class="id">${esc(v.id)}</code>
             <button class="copy" data-id="${esc(v.id)}" title="Copy media ID">Copy</button></div></td>
           <td class="title">${esc(v.title) || '<span class="muted">(untitled)</span>'}</td>
-          <td>${esc(v.channel) || '—'}</td>
           <td>${fmtDuration(v.duration)}</td>
           <td>${esc(fmtDate(v.created_time))}</td>
           <td>${v.views_total != null ? Number(v.views_total).toLocaleString() : '—'}</td>
           <td>${visibilityPill(v)}</td>
-          <td>${v.is_created_for_kids ? 'Yes' : 'No'}</td>
-          <td>${esc(v.status) || '—'}</td>
           <td class="tags">${tagChips(v.tags)}</td>
-          <td>${esc(v['owner.screenname'] || (v.owner && v.owner.screenname) || v['owner.id'] || '—')}</td>
           <td>${v.url ? `<a class="watch" href="${esc(v.url)}" target="_blank" rel="noopener">Watch ↗</a>` : '—'}</td>
+          <td>${isPublic(v) ? '<span class="muted">—</span>' : `<button class="publish-btn" data-id="${esc(v.id)}">Publish</button>`}</td>
         </tr>`;
     }
 
@@ -202,8 +208,8 @@
         <div class="table-wrap">
           <table>
             <thead><tr>
-              <th>Done</th><th>Media ID</th><th>Title</th><th>Channel</th><th>Duration</th><th>Created</th>
-              <th>Views</th><th>Visibility</th><th>Kids</th><th>Status</th><th>Tags</th><th>Owner</th><th>Links</th>
+              <th>Done</th><th>Media ID</th><th>Title</th><th>Duration</th><th>Created</th>
+              <th>Views</th><th>Visibility</th><th>Tags</th><th>Links</th><th>Publish</th>
             </tr></thead>
             <tbody>${videos.map(rowFor).join('')}</tbody>
           </table>
@@ -262,6 +268,8 @@
 
     // Toggle "done" (event delegation across all tables). Optimistic UI:
     // flip the styling immediately, then persist; revert on failure.
+    // Marking done ALSO makes the video public on Dailymotion. Un-marking only
+    // clears the done flag (it doesn't un-publish).
     results.addEventListener('click', async (e) => {
       const btn = e.target.closest('.done-toggle');
       if (!btn) return;
@@ -272,20 +280,111 @@
       if (makeDone) doneSet.add(id); else doneSet.delete(id);
       render();
 
+      // Un-marking: just persist done=false, leave DM visibility as-is.
+      if (!makeDone) {
+        try {
+          const res = await fetch('/api/done', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, done: false }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        } catch (err) {
+          doneSet.add(id);
+          render();
+          status.className = 'err';
+          status.textContent = '❌ Could not save: ' + err.message;
+        }
+        return;
+      }
+
+      // Only publish if the video isn't already public.
+      const vid = allVideos.find((x) => String(x.id) === id);
+      const needsPublish = vid ? !isPublic(vid) : true;
+
+      status.className = 'info';
+      status.textContent = needsPublish
+        ? 'Marking done + publishing on Dailymotion…'
+        : 'Marking done…';
+
+      // 1) Persist the done mark.
       try {
         const res = await fetch('/api/done', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, done: makeDone }),
+          body: JSON.stringify({ id, done: true }),
         });
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
       } catch (err) {
-        // Revert.
-        if (makeDone) doneSet.delete(id); else doneSet.add(id);
+        doneSet.delete(id);
         render();
         status.className = 'err';
-        status.textContent = '❌ Could not save: ' + err.message;
+        status.textContent = '❌ Could not mark done: ' + err.message;
+        return;
+      }
+
+      // Already public — done is saved, nothing more to do.
+      if (!needsPublish) {
+        status.className = 'info';
+        status.textContent = '✓ Marked done.';
+        return;
+      }
+
+      // 2) Make it public on Dailymotion. The done mark is already saved, so
+      //    keep it even if publishing fails — just surface the publish error.
+      try {
+        const res = await fetch('/api/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        const v = allVideos.find((x) => String(x.id) === id);
+        if (v) {
+          if (data.video) Object.assign(v, data.video);
+          else { v.private = false; v.published = true; }
+        }
+        render();
+        status.className = 'info';
+        status.textContent = '✓ Marked done and published on Dailymotion.';
+      } catch (err) {
+        status.className = 'err';
+        status.textContent = '⚠ Marked done, but could not publish: ' + err.message;
+      }
+    });
+
+    // Publish a not-yet-public video on Dailymotion (event delegation).
+    results.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.publish-btn');
+      if (!btn) return;
+      const id = String(btn.dataset.id);
+      btn.disabled = true;
+      btn.textContent = 'Publishing…';
+      try {
+        const res = await fetch('/api/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        // Reflect the new visibility in our copy, then re-render.
+        const v = allVideos.find((x) => String(x.id) === id);
+        if (v) {
+          if (data.video) Object.assign(v, data.video);
+          else { v.private = false; v.published = true; }
+        }
+        render();
+        status.className = 'info';
+        status.textContent = '✓ Published on Dailymotion.';
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Publish';
+        status.className = 'err';
+        status.textContent = '❌ Could not publish: ' + err.message;
       }
     });
 

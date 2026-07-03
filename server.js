@@ -168,6 +168,22 @@ async function createVideo(token, profileId, fileUrl, fields) {
   return data;
 }
 
+/** Make a video public on Dailymotion: published + not private. */
+async function publishVideo(token, id) {
+  const body = new URLSearchParams({ published: 'true', private: 'false' });
+  const res = await fetch(`${BASE}/rest/video/${id}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Publish failed: ${describe(data)}`);
+  return data;
+}
+
 // The video fields we pull back for the browse/table view.
 const VIDEO_FIELDS = [
   'id', 'title', 'description', 'tags', 'channel', 'duration', 'created_time',
@@ -198,6 +214,17 @@ async function fetchVideosForProfile(token, profileId, pageCap = 20) {
   }
   console.warn(`⚠ hit page cap (${pageCap}) listing videos for ${profileId}; results may be truncated.`);
   return all;
+}
+
+/** Re-read a single video's table fields (used after a publish). */
+async function fetchVideoById(token, id) {
+  const res = await fetch(
+    `${BASE}/rest/video/${id}?fields=${encodeURIComponent(VIDEO_FIELDS)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Fetch video failed: ${describe(data)}`);
+  return data;
 }
 
 /** True if the video carries `tag` (case-insensitive, ignoring a leading #). */
@@ -324,6 +351,30 @@ async function refreshTag(tag) {
   return { tag: key, cachedAt, videos };
 }
 
+/** Patch the stored copy of a single video (KV record + local caches) so the
+ *  table reflects a change without a full re-pull. */
+async function updateStoredVideo(id, patch) {
+  const sid = String(id);
+  if (KV_ENABLED) {
+    const client = await kvClient();
+    const existing = await client.get(videoRecKey(sid));
+    await client.set(videoRecKey(sid), { ...(existing || { id: sid }), ...patch });
+    return;
+  }
+  // Local fallback: patch the video inside every cached tag entry that holds it.
+  for (const entry of memCache.values()) {
+    const v = entry.videos.find((x) => String(x.id) === sid);
+    if (v) Object.assign(v, patch);
+  }
+  const cache = readCache();
+  let touched = false;
+  for (const key of Object.keys(cache)) {
+    const v = (cache[key].videos || []).find((x) => String(x.id) === sid);
+    if (v) { Object.assign(v, patch); touched = true; }
+  }
+  if (touched) writeCache(cache);
+}
+
 // GET = serve from cache; only fetch from Dailymotion the first time a tag is
 // requested (or after a cold start on Vercel, when memory is empty).
 app.get('/api/videos', async (req, res) => {
@@ -426,6 +477,36 @@ app.post('/api/done', async (req, res) => {
     res.json({ success: true, id, done });
   } catch (err) {
     console.error('✗ Could not update done mark:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Make a video public on Dailymotion (published + not private), then update
+// our stored copy so the table reflects the new visibility.
+app.post('/api/publish', async (req, res) => {
+  const id = req.body?.id != null ? String(req.body.id) : '';
+  if (!id) return res.status(400).json({ error: 'Missing video id.' });
+  try {
+    if (!DM_API_KEY || !DM_API_SECRET) {
+      throw new Error('Set DM_API_KEY and DM_API_SECRET in your .env file.');
+    }
+    const { token } = await authenticate();
+    await publishVideo(token, id);
+
+    // Re-read the fresh state and patch our stored copy. If the follow-up read
+    // fails, the publish still succeeded — patch the visibility fields anyway.
+    let video = null;
+    try {
+      video = await fetchVideoById(token, id);
+      video.stage = extractStage(video);
+      await updateStoredVideo(id, video);
+    } catch (readErr) {
+      console.error(`⚠ published ${id} but could not re-read it: ${readErr.message}`);
+      await updateStoredVideo(id, { private: false, published: true });
+    }
+    res.json({ success: true, id, video });
+  } catch (err) {
+    console.error('✗ Publish failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

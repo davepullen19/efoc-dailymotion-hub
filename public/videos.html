@@ -42,6 +42,9 @@
     th { background: #f9fafb; font-weight: 600; color: #475467; }
     tbody tr:last-child td { border-bottom: 0; }
     tbody tr:hover { background: #fafbfc; }
+    tbody tr.dnp td { background: #fef3f2; color: #b42318; }
+    tbody tr.dnp:hover td { background: #fee4e2; }
+    tbody tr.dnp code.id { background: #fee4e2; color: #b42318; }
     td.title { white-space: normal; min-width: 220px; font-weight: 600; }
     td.tags { white-space: normal; max-width: 220px; }
     .tag { display: inline-block; background: #f2f4f7; color: #475467; border-radius: 6px; padding: .1rem .4rem; margin: 0 .2rem .2rem 0; font-size: .75rem; }
@@ -124,9 +127,14 @@
       }).join('');
     }
 
+    // "DNP" (do not publish) videos are flagged red. Match it as a standalone
+    // token — separated by anything non-alphabetic (e.g. "Amazon_DNP", "DNP:")
+    // — so titles like "Sudnpost" don't trip it.
+    const isDNP = (title) => /(^|[^a-z])DNP([^a-z]|$)/i.test(String(title || ''));
+
     function rowFor(v) {
       return `
-        <tr>
+        <tr${isDNP(v.title) ? ' class="dnp"' : ''}>
           <td><div class="id-cell"><code class="id">${esc(v.id)}</code>
             <button class="copy" data-id="${esc(v.id)}" title="Copy media ID">Copy</button></div></td>
           <td class="title">${esc(v.title) || '<span class="muted">(untitled)</span>'}</td>

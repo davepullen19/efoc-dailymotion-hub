@@ -31,6 +31,12 @@
     }
     button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--border); }
     button:disabled { opacity: .6; cursor: not-allowed; }
+    .spin {
+      display: inline-block; width: 15px; height: 15px; vertical-align: middle;
+      border: 2px solid rgba(0,102,220,.25); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .meta { color: #667085; font-size: .85rem; margin: .25rem 0 1rem; }
     .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
     .tab {
@@ -102,6 +108,7 @@
       </div>
       <button id="load">Load</button>
       <button id="refresh" class="secondary" title="Re-fetch from Dailymotion">↻ Refresh from Dailymotion</button>
+      <span id="refresh-spin" class="spin" style="display:none" aria-label="Refreshing"></span>
     </div>
 
     <div class="meta" id="meta"></div>
@@ -118,6 +125,7 @@
     const tagInput = document.getElementById('tag');
     const loadBtn = document.getElementById('load');
     const refreshBtn = document.getElementById('refresh');
+    const refreshSpin = document.getElementById('refresh-spin');
     const results = document.getElementById('results');
     const meta = document.getElementById('meta');
     const status = document.getElementById('status');
@@ -307,12 +315,6 @@
       setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
     });
 
-    function setBusy(busy, verb) {
-      loadBtn.disabled = refreshBtn.disabled = busy;
-      if (busy) { status.className = 'info'; status.textContent = verb; }
-      else { status.style.display = 'none'; }
-    }
-
     function showMeta(data) {
       const when = data.cachedAt ? new Date(data.cachedAt).toLocaleString() : 'unknown';
       const src = data.cached ? 'from cache' : 'freshly fetched';
@@ -321,10 +323,19 @@
 
     async function fetchVideos({ refresh }) {
       const tag = tagInput.value.trim() || 'EFOC26';
-      setBusy(true, refresh ? 'Re-fetching from Dailymotion…' : 'Loading…');
-      meta.textContent = '';
-      results.innerHTML = '';
-      tabs.style.display = 'none';
+      loadBtn.disabled = refreshBtn.disabled = true;
+      if (refresh) {
+        // Keep the current list on screen; just show a small spinner.
+        refreshSpin.style.display = 'inline-block';
+        status.style.display = 'none';
+      } else {
+        // A fresh load (possibly a different tag) — clear and show a message.
+        status.className = 'info';
+        status.textContent = 'Loading…';
+        meta.textContent = '';
+        results.innerHTML = '';
+        tabs.style.display = 'none';
+      }
       try {
         const url = '/api/videos' + (refresh ? '/refresh' : '') + '?tag=' + encodeURIComponent(tag);
         // Load the videos and the shared "done" set together.
@@ -338,11 +349,14 @@
           const dd = await doneRes.json();
           if (Array.isArray(dd.done)) doneSet = new Set(dd.done.map(String));
         } catch { /* non-fatal: fall back to showing nothing as done */ }
-        setBusy(false);
+        refreshSpin.style.display = 'none';
+        loadBtn.disabled = refreshBtn.disabled = false;
+        status.style.display = 'none';
         showMeta(data);
         allVideos = data.videos || [];
         render();
       } catch (err) {
+        refreshSpin.style.display = 'none';
         loadBtn.disabled = refreshBtn.disabled = false;
         status.className = 'err';
         status.textContent = '❌ ' + err.message;

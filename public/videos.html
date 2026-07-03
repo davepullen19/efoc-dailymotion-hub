@@ -31,7 +31,17 @@
     }
     button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--border); }
     button:disabled { opacity: .6; cursor: not-allowed; }
-    .meta { color: #667085; font-size: .85rem; margin: .25rem 0 1.25rem; }
+    .meta { color: #667085; font-size: .85rem; margin: .25rem 0 1rem; }
+    .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
+    .tab {
+      background: none; color: #667085; border: 0; border-bottom: 2px solid transparent;
+      padding: .55rem .9rem; margin-bottom: -1px; font-size: .9rem; font-weight: 600;
+      cursor: pointer; border-radius: 0; display: flex; align-items: center; gap: .4rem;
+    }
+    .tab:hover { color: #1a1a2e; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tcount { background: #eef2ff; color: #3538cd; border-radius: 999px; padding: .05rem .5rem; font-size: .75rem; font-weight: 700; }
+    .tab.active .tcount { background: var(--accent); color: #fff; }
     section.stage { margin-bottom: 2rem; }
     section.stage h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: center; gap: .5rem; }
     .gcount { background: #eef2ff; color: #3538cd; border-radius: 999px; padding: .05rem .55rem; font-size: .8rem; font-weight: 700; }
@@ -95,6 +105,11 @@
     </div>
 
     <div class="meta" id="meta"></div>
+    <div class="tabs" id="tabs" style="display:none">
+      <button class="tab active" data-tab="todo">To do <span class="tcount" id="count-todo">0</span></button>
+      <button class="tab" data-tab="done">Done <span class="tcount" id="count-done">0</span></button>
+      <button class="tab" data-tab="all">All <span class="tcount" id="count-all">0</span></button>
+    </div>
     <div id="results"></div>
     <div id="status"></div>
   </div>
@@ -106,6 +121,11 @@
     const results = document.getElementById('results');
     const meta = document.getElementById('meta');
     const status = document.getElementById('status');
+    const tabs = document.getElementById('tabs');
+
+    // The full video list for the current tag + which tab is showing.
+    let allVideos = [];
+    let activeTab = 'todo'; // 'todo' | 'done' | 'all'
 
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -182,9 +202,36 @@
         </div>`;
     }
 
-    function render(videos) {
-      if (!videos.length) {
+    const isDoneV = (v) => doneSet.has(String(v.id));
+
+    // Refresh the tab counts + active state from the full list.
+    function renderTabs() {
+      const total = allVideos.length;
+      const done = allVideos.filter(isDoneV).length;
+      document.getElementById('count-todo').textContent = total - done;
+      document.getElementById('count-done').textContent = done;
+      document.getElementById('count-all').textContent = total;
+      tabs.style.display = total ? 'flex' : 'none';
+      for (const t of tabs.querySelectorAll('.tab')) {
+        t.classList.toggle('active', t.dataset.tab === activeTab);
+      }
+    }
+
+    function render() {
+      renderTabs();
+      let videos = allVideos;
+      if (activeTab === 'todo') videos = allVideos.filter((v) => !isDoneV(v));
+      else if (activeTab === 'done') videos = allVideos.filter(isDoneV);
+
+      if (!allVideos.length) {
         results.innerHTML = '<p class="muted">No videos found for this tag.</p>';
+        return;
+      }
+      if (!videos.length) {
+        const msg = activeTab === 'done' ? 'Nothing marked done yet.'
+          : activeTab === 'todo' ? 'All caught up — everything is marked done. 🎉'
+          : 'No videos found for this tag.';
+        results.innerHTML = `<p class="muted">${msg}</p>`;
         return;
       }
       // Group by the parsed stage; videos with no stage go last.
@@ -212,14 +259,10 @@
       if (!btn) return;
       const id = String(btn.dataset.id);
       const makeDone = !doneSet.has(id);
-      const row = btn.closest('tr');
 
-      btn.disabled = true;
-      // Apply optimistically.
+      // Apply optimistically + re-render so it moves tab and counts update.
       if (makeDone) doneSet.add(id); else doneSet.delete(id);
-      row.classList.toggle('done', makeDone);
-      btn.classList.toggle('is-done', makeDone);
-      btn.textContent = makeDone ? '✓ Done' : 'Mark done';
+      render();
 
       try {
         const res = await fetch('/api/done', {
@@ -232,14 +275,18 @@
       } catch (err) {
         // Revert.
         if (makeDone) doneSet.delete(id); else doneSet.add(id);
-        row.classList.toggle('done', !makeDone);
-        btn.classList.toggle('is-done', !makeDone);
-        btn.textContent = !makeDone ? '✓ Done' : 'Mark done';
+        render();
         status.className = 'err';
         status.textContent = '❌ Could not save: ' + err.message;
-      } finally {
-        btn.disabled = false;
       }
+    });
+
+    // Switch tabs.
+    tabs.addEventListener('click', (e) => {
+      const t = e.target.closest('.tab');
+      if (!t || t.dataset.tab === activeTab) return;
+      activeTab = t.dataset.tab;
+      render();
     });
 
     // Copy-to-clipboard (event delegation across all tables).
@@ -277,6 +324,7 @@
       setBusy(true, refresh ? 'Re-fetching from Dailymotion…' : 'Loading…');
       meta.textContent = '';
       results.innerHTML = '';
+      tabs.style.display = 'none';
       try {
         const url = '/api/videos' + (refresh ? '/refresh' : '') + '?tag=' + encodeURIComponent(tag);
         // Load the videos and the shared "done" set together.
@@ -292,7 +340,8 @@
         } catch { /* non-fatal: fall back to showing nothing as done */ }
         setBusy(false);
         showMeta(data);
-        render(data.videos);
+        allVideos = data.videos || [];
+        render();
       } catch (err) {
         loadBtn.disabled = refreshBtn.disabled = false;
         status.className = 'err';

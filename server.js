@@ -184,6 +184,33 @@ async function publishVideo(token, id) {
   return data;
 }
 
+/**
+ * Update editable metadata on an existing video. Only fields present in
+ * `fields` are sent, so a caller updating just the description never touches
+ * the title or tags. Empty descriptions are allowed (clears the field).
+ */
+async function updateVideoFields(token, id, fields) {
+  const body = new URLSearchParams();
+  if (fields.title != null) body.set('title', fields.title);
+  if (fields.description != null) body.set('description', fields.description);
+  if (fields.tags != null) body.set('tags', fields.tags);
+  if ([...body.keys()].length === 0) {
+    throw new Error('Nothing to update — provide at least one field.');
+  }
+
+  const res = await fetch(`${BASE}/rest/video/${id}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Update failed: ${describe(data)}`);
+  return data;
+}
+
 /** Permanently delete a video from Dailymotion. */
 async function deleteVideo(token, id) {
   const res = await fetch(`${BASE}/rest/video/${id}`, {
@@ -554,6 +581,49 @@ app.post('/api/publish', async (req, res) => {
   }
 });
 
+// Update editable metadata (description, and optionally title/tags) on a video,
+// then re-read the fresh state and patch our stored copy so the table reflects
+// the change without a full re-pull. The Descriptions page uses this to push
+// CSV-sourced descriptions to the matched Dailymotion video.
+app.post('/api/update-video', async (req, res) => {
+  const id = req.body?.id != null ? String(req.body.id) : '';
+  if (!id) return res.status(400).json({ error: 'Missing video id.' });
+
+  // Only forward fields the caller actually sent, so an unset field is never
+  // blanked. (`description: ""` is a real value — clearing the description.)
+  const fields = {};
+  if ('title' in req.body) fields.title = String(req.body.title ?? '');
+  if ('description' in req.body) fields.description = String(req.body.description ?? '');
+  if ('tags' in req.body) fields.tags = String(req.body.tags ?? '');
+  if (Object.keys(fields).length === 0) {
+    return res.status(400).json({ error: 'No fields to update.' });
+  }
+
+  try {
+    if (!DM_API_KEY || !DM_API_SECRET) {
+      throw new Error('Set DM_API_KEY and DM_API_SECRET in your .env file.');
+    }
+    const { token } = await authenticate();
+    await updateVideoFields(token, id, fields);
+
+    // Re-read the fresh state and patch our stored copy. If the follow-up read
+    // fails, the update still succeeded — patch the fields we sent anyway.
+    let video = null;
+    try {
+      video = await fetchVideoById(token, id);
+      video.stage = extractStage(video);
+      await updateStoredVideo(id, video);
+    } catch (readErr) {
+      console.error(`⚠ updated ${id} but could not re-read it: ${readErr.message}`);
+      await updateStoredVideo(id, fields);
+    }
+    res.json({ success: true, id, video });
+  } catch (err) {
+    console.error('✗ Update failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Permanently delete a video from Dailymotion, then drop our stored copy.
 app.delete('/api/videos/:id', async (req, res) => {
   const id = String(req.params.id || '');
@@ -568,6 +638,100 @@ app.delete('/api/videos/:id', async (req, res) => {
     res.json({ success: true, id });
   } catch (err) {
     console.error('✗ Delete failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- Description source (bundled tracker CSVs) ----------------------------
+// The three EFOC trackers in trackers/*.csv are the source of truth for video
+// descriptions. We parse them once (cached in memory) and expose only the
+// fields the UI needs — media id, title, description — so the analytics/talent
+// columns never leave the server.
+const TRACKERS_DIR = path.join(__dirname, 'trackers');
+
+/** Minimal RFC-4180-ish CSV parser: handles quoted fields with embedded
+ *  commas, newlines, and doubled quotes. Returns an array of row arrays. */
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQ = false;
+      } else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\r') { /* skip */ }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+/** A friendly label for a tracker file, e.g. day2.csv → "Day 2". */
+function trackerLabel(file) {
+  const m = file.match(/day\s*(\d+)/i);
+  return m ? `Day ${m[1]}` : file.replace(/\.csv$/i, '');
+}
+
+let descCache = null; // { rows, files, loadedAt }
+
+/** Parse every trackers/*.csv into description rows (cached). */
+function loadDescriptionRows() {
+  if (descCache) return descCache;
+  const rows = [];
+  const files = [];
+  let names = [];
+  try {
+    names = fs.readdirSync(TRACKERS_DIR).filter((f) => /\.csv$/i.test(f)).sort();
+  } catch {
+    names = [];
+  }
+  for (const name of names) {
+    let parsed;
+    try {
+      parsed = parseCSV(fs.readFileSync(path.join(TRACKERS_DIR, name), 'utf8'));
+    } catch (err) {
+      console.error(`⚠ could not read tracker ${name}: ${err.message}`);
+      continue;
+    }
+    if (!parsed.length) continue;
+    const header = parsed[0].map((h) => h.trim().toLowerCase());
+    const iMedia = header.findIndex((h) => h.includes('media id'));
+    const iTitle = header.findIndex((h) => h === 'title');
+    const iDesc = header.findIndex((h) => h === 'description');
+    if (iTitle < 0 || iDesc < 0) {
+      console.error(`⚠ tracker ${name} missing Title/Description columns`);
+      continue;
+    }
+    const day = trackerLabel(name);
+    let kept = 0;
+    for (let r = 1; r < parsed.length; r++) {
+      const line = parsed[r];
+      const title = (line[iTitle] || '').trim();
+      const description = (line[iDesc] || '').trim();
+      const mediaId = iMedia >= 0 ? (line[iMedia] || '').trim() : '';
+      if (title && (description || mediaId)) {
+        rows.push({ mediaId, title, description, day });
+        kept++;
+      }
+    }
+    files.push({ day, name, rows: kept });
+  }
+  descCache = { rows, files, loadedAt: new Date().toISOString() };
+  return descCache;
+}
+
+// Serve the bundled tracker descriptions (source of truth for the modal).
+app.get('/api/descriptions', (req, res) => {
+  try {
+    const { rows, files, loadedAt } = loadDescriptionRows();
+    res.json({ count: rows.length, files, loadedAt, rows });
+  } catch (err) {
+    console.error('✗ Could not load descriptions:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

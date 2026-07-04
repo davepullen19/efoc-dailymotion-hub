@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dailymotion Uploader</title>
+  <title>Dailymotion — EFOC Video Hub</title>
   <style>
     :root { --bg: #0a0a23; --accent: #0066dc; --border: #d0d5dd; }
     * { box-sizing: border-box; }
@@ -12,250 +12,692 @@
       background: #f5f7fa; color: #1a1a2e; margin: 0; padding: 2rem;
     }
     .card {
-      max-width: 640px; margin: 0 auto; background: #fff; padding: 2rem;
+      max-width: 1280px; margin: 0 auto; background: #fff; padding: 2rem;
       border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.06);
     }
+    .top { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
     h1 { margin-top: 0; font-size: 1.4rem; }
     p.sub { color: #667085; margin-top: -.5rem; font-size: .9rem; }
-    label { display: block; font-weight: 600; margin: 1rem 0 .35rem; font-size: .9rem; }
-    input[type=text], input[type=file], textarea, select {
-      width: 100%; padding: .6rem .7rem; border: 1px solid var(--border);
-      border-radius: 8px; font-size: .95rem; font-family: inherit;
+    .controls { display: flex; gap: .5rem; align-items: flex-end; margin: 1rem 0 .5rem; flex-wrap: wrap; }
+    .controls label { display: block; font-weight: 600; margin-bottom: .35rem; font-size: .85rem; }
+    input[type=text] {
+      padding: .55rem .7rem; border: 1px solid var(--border); border-radius: 8px;
+      font-size: .95rem; font-family: inherit; min-width: 200px;
     }
-    textarea { min-height: 80px; resize: vertical; }
-    .checks { margin-top: 1rem; }
-    .checks label { display: flex; align-items: center; gap: .5rem; font-weight: 500; }
-    .checks input { width: auto; }
     button {
-      margin-top: 1.5rem; width: 100%; padding: .8rem; background: var(--accent);
-      color: #fff; border: 0; border-radius: 8px; font-size: 1rem; font-weight: 600;
-      cursor: pointer;
+      padding: .6rem 1rem; background: var(--accent); color: #fff; border: 0;
+      border-radius: 8px; font-size: .95rem; font-weight: 600; cursor: pointer;
     }
+    button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--border); }
     button:disabled { opacity: .6; cursor: not-allowed; }
-    .req { color: #d92d20; }
-    #status { margin-top: 1.25rem; padding: .85rem 1rem; border-radius: 8px; display: none; font-size: .9rem; }
-    #status.ok { background: #ecfdf3; color: #067647; display: block; }
+    .spin {
+      display: inline-block; width: 15px; height: 15px; vertical-align: middle;
+      border: 2px solid rgba(0,102,220,.25); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .meta { color: #667085; font-size: .85rem; margin: .25rem 0 1rem; }
+    .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
+    .tab {
+      background: none; color: #667085; border: 0; border-bottom: 2px solid transparent;
+      padding: .55rem .9rem; margin-bottom: -1px; font-size: .9rem; font-weight: 600;
+      cursor: pointer; border-radius: 0; display: flex; align-items: center; gap: .4rem;
+    }
+    .tab:hover { color: #1a1a2e; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tcount { background: #eef2ff; color: #3538cd; border-radius: 999px; padding: .05rem .5rem; font-size: .75rem; font-weight: 700; }
+    .tab.active .tcount { background: var(--accent); color: #fff; }
+    section.stage { margin-bottom: 2rem; }
+    section.stage h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: center; gap: .5rem; }
+    .gcount { background: #eef2ff; color: #3538cd; border-radius: 999px; padding: .05rem .55rem; font-size: .8rem; font-weight: 700; }
+    .no-stage h2 { color: #98a2b3; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+    th, td { text-align: left; padding: .6rem .7rem; border-bottom: 1px solid #eaecf0; vertical-align: top; white-space: nowrap; }
+    th { background: #f9fafb; font-weight: 600; color: #475467; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #fafbfc; }
+    tbody tr.dnp td { background: #fef3f2; color: #b42318; }
+    tbody tr.dnp:hover td { background: #fee4e2; }
+    tbody tr.dnp code.id { background: #fee4e2; color: #b42318; }
+    tbody tr.done td { background: #ecfdf3; color: #087443; }
+    tbody tr.done:hover td { background: #d1fadf; }
+    tbody tr.done td.title { text-decoration: line-through; opacity: .75; }
+    tbody tr.done.dnp td { background: #ecfdf3; color: #087443; }
+    .done-toggle {
+      padding: .3rem .6rem; font-size: .78rem; background: #fff; color: var(--accent);
+      border: 1px solid var(--border); border-radius: 6px; cursor: pointer; white-space: nowrap;
+    }
+    .done-toggle.is-done { background: #067647; color: #fff; border-color: #067647; }
+    .done-toggle:disabled { opacity: .5; cursor: wait; }
+    .done-toggle .plus-public { display: block; font-size: .7rem; font-weight: 700; opacity: .8; }
+    .publish-btn {
+      padding: .3rem .6rem; font-size: .78rem; background: var(--accent); color: #fff;
+      border: 0; border-radius: 6px; cursor: pointer; white-space: nowrap;
+    }
+    .publish-btn:disabled { opacity: .6; cursor: wait; }
+    .delete-btn {
+      padding: .3rem .6rem; font-size: .78rem; background: #fff; color: #b42318;
+      border: 1px solid #fecdca; border-radius: 6px; cursor: pointer; white-space: nowrap;
+    }
+    .delete-btn:hover { background: #fef3f2; }
+    .delete-btn:disabled { opacity: .6; cursor: wait; }
+    td.title { white-space: normal; min-width: 220px; font-weight: 600; }
+    td.tags { white-space: normal; max-width: 220px; }
+    .tag { display: inline-block; background: #f2f4f7; color: #475467; border-radius: 6px; padding: .1rem .4rem; margin: 0 .2rem .2rem 0; font-size: .75rem; }
+    .tag.stage-tag { background: #eef2ff; color: #3538cd; font-weight: 600; }
+    .id-cell { display: flex; align-items: center; gap: .4rem; }
+    code.id { background: #f2f4f7; padding: .15rem .4rem; border-radius: 6px; font-size: .8rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .copy { padding: .25rem .5rem; font-size: .75rem; background: #fff; color: var(--accent); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+    .copy.copied { background: #ecfdf3; color: #067647; border-color: #a6f4c5; }
+    .pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+    .pill.private { background: #fef3f2; color: #b42318; }
+    .pill.public { background: #ecfdf3; color: #067647; }
+    .pill.draft { background: #fffaeb; color: #b54708; }
+    /* Description column */
+    .has-desc { color: #067647; font-weight: 600; font-size: .8rem; }
+    .add-desc-btn {
+      padding: .3rem .6rem; font-size: .78rem; background: #fffaeb; color: #b54708;
+      border: 1px solid #fedf89; border-radius: 6px; cursor: pointer; white-space: nowrap; font-weight: 700;
+    }
+    .add-desc-btn:hover { background: #fef0c7; }
+    .add-desc-btn.no-match { background: #fff; color: #98a2b3; border-color: var(--border); font-weight: 600; }
+    .muted { color: #98a2b3; }
+    a.watch { color: var(--accent); text-decoration: none; font-weight: 600; }
+    #status { margin-top: 1rem; padding: .85rem 1rem; border-radius: 8px; display: none; font-size: .9rem; }
     #status.err { background: #fef3f2; color: #b42318; display: block; }
-    #status a { color: inherit; font-weight: 600; }
-    #progress { margin-top: 1.25rem; display: none; }
-    #progress.show { display: block; }
-    .bar { height: 10px; background: #eaecf0; border-radius: 999px; overflow: hidden; }
-    .bar > span {
-      display: block; height: 100%; width: 0%; background: var(--accent);
-      border-radius: 999px; transition: width .15s ease;
+    #status.info { background: #eff8ff; color: #175cd3; display: block; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(16,24,40,.55); display: flex; align-items: center; justify-content: center; padding: 1.5rem; z-index: 50; }
+    .modal-overlay[hidden] { display: none; }
+    .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.3rem; border-bottom: 1px solid #eaecf0; }
+    .modal-head h2 { margin: 0; font-size: 1.15rem; }
+    .modal-x { background: none; border: 0; color: #667085; font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 0 .3rem; }
+    .modal-body { padding: 1.1rem 1.3rem; overflow-y: auto; }
+    .modal-label { font-weight: 700; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: #667085; margin: 1rem 0 .4rem; }
+    .modal-label:first-child { margin-top: 0; }
+    .modal-vtitle { font-size: 1.15rem; font-weight: 700; line-height: 1.3; }
+    .modal-vid { margin-top: .4rem; }
+    .modal select, .modal textarea {
+      width: 100%; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px;
+      font-size: .9rem; font-family: inherit;
     }
-    .bar.indeterminate > span {
-      width: 40%; background: var(--accent);
-      animation: slide 1.1s ease-in-out infinite;
-    }
-    @keyframes slide {
-      0% { margin-left: -40%; } 100% { margin-left: 100%; }
-    }
-    .bar-meta {
-      display: flex; justify-content: space-between; margin-top: .4rem;
-      font-size: .82rem; color: #667085;
-    }
+    .modal textarea { min-height: 150px; resize: vertical; line-height: 1.4; }
+    .modal-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: 1rem 1.3rem; border-top: 1px solid #eaecf0; }
+    .conf { display: inline-block; border-radius: 999px; padding: .1rem .5rem; font-size: .72rem; font-weight: 700; margin-left: .4rem; }
+    .conf.exact { background: #d1fadf; color: #067647; }
+    .conf.strong { background: #d1e9ff; color: #175cd3; }
+    .conf.review { background: #fef0c7; color: #b54708; }
+    .conf.none { background: #fee4e2; color: #b42318; }
+    .modal .hint { font-size: .8rem; color: #667085; margin: .5rem 0 0; }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Upload to Dailymotion</h1>
-    <p class="sub">A simple demo of the Dailymotion Partner API upload flow.
-      &nbsp;·&nbsp; <a href="/videos.html">Browse tagged videos →</a></p>
-
-    <form id="form">
-      <label>Upload to profile <span class="req">*</span></label>
-      <select name="profileId" id="profile" required>
-        <option value="">Loading profiles…</option>
-      </select>
-
-      <label>Video file <span class="req">*</span></label>
-      <input type="file" name="video" accept="video/*" required />
-
-      <label>Title <span class="req">*</span></label>
-      <input type="text" name="title" maxlength="255" required />
-
-      <label>Channel (category) <span class="req">*</span></label>
-      <select name="channel" required>
-        <option value="">Select a channel…</option>
-        <option value="news">News &amp; Politics</option>
-        <option value="tv">TV &amp; Comedy</option>
-        <option value="music">Music</option>
-        <option value="sport">Sport</option>
-        <option value="videogames">Video Games</option>
-        <option value="fun">Fun &amp; Entertainment</option>
-        <option value="tech">Tech &amp; Science</option>
-        <option value="auto">Cars &amp; Vehicles</option>
-        <option value="lifestyle">Lifestyle &amp; How-to</option>
-        <option value="travel">Travel</option>
-        <option value="animals">Animals</option>
-        <option value="people">People &amp; Blogs</option>
-        <option value="shortfilms">Movies &amp; Short Films</option>
-        <option value="creation">Creative</option>
-        <option value="kids">Kids</option>
-      </select>
-
-      <label>Description</label>
-      <textarea name="description" maxlength="3000"></textarea>
-
-      <label>Tags (comma-separated)</label>
-      <input type="text" name="tags" placeholder="funny, cats, tutorial" />
-
-      <div class="checks">
-        <label><input type="checkbox" name="published" checked /> Published (embeddable / visible)</label>
-        <label><input type="checkbox" name="private" /> Private (restricted access)</label>
-        <label><input type="checkbox" name="is_created_for_kids" /> Made for kids (COPPA/GDPR)</label>
-      </div>
-
-      <button type="submit" id="btn">Upload video</button>
-    </form>
-
-    <div id="progress">
-      <div class="bar" id="bar"><span id="barFill"></span></div>
-      <div class="bar-meta">
-        <span id="barPct">0%</span>
-        <span id="barSpeed"></span>
+    <div class="top">
+      <div>
+        <h1>EFOC Video Hub</h1>
+        <p class="sub">Tagged Dailymotion videos, grouped by <code>stage:&lt;name&gt;</code>. Descriptions come from the bundled EFOC trackers.</p>
       </div>
     </div>
 
+    <div class="controls">
+      <div>
+        <label for="tag">Tag</label>
+        <input type="text" id="tag" value="EFOC26" placeholder="EFOC26" />
+      </div>
+      <button id="load">Load</button>
+      <button id="refresh" class="secondary" title="Re-fetch from Dailymotion">↻ Refresh from Dailymotion</button>
+      <span id="refresh-spin" class="spin" style="display:none" aria-label="Refreshing"></span>
+    </div>
+
+    <div class="meta" id="meta"></div>
+    <div class="tabs" id="tabs" style="display:none">
+      <button class="tab active" data-tab="todo">To do <span class="tcount" id="count-todo">0</span></button>
+      <button class="tab" data-tab="done">Done <span class="tcount" id="count-done">0</span></button>
+      <button class="tab" data-tab="all">All <span class="tcount" id="count-all">0</span></button>
+    </div>
+    <div id="results"></div>
     <div id="status"></div>
   </div>
 
+  <!-- Add-description modal -->
+  <div id="modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-heading">
+      <div class="modal-head">
+        <h2 id="m-heading">Add description</h2>
+        <button class="modal-x" id="m-close" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-label">Video</div>
+        <div class="modal-vtitle" id="m-title"></div>
+        <div class="modal-vid"><code class="id" id="m-id"></code></div>
+
+        <div class="modal-label">Description source <span id="m-conf"></span></div>
+        <select id="m-source"></select>
+
+        <div class="modal-label">Description</div>
+        <textarea id="m-desc" placeholder="Description from the tracker…"></textarea>
+        <p class="hint">This writes the description to the live Dailymotion video. Titles and tags are left untouched.</p>
+      </div>
+      <div class="modal-foot">
+        <button class="secondary" id="m-cancel">Cancel</button>
+        <button id="m-confirm">Confirm &amp; add</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    const form = document.getElementById('form');
-    const btn = document.getElementById('btn');
+    const tagInput = document.getElementById('tag');
+    const loadBtn = document.getElementById('load');
+    const refreshBtn = document.getElementById('refresh');
+    const refreshSpin = document.getElementById('refresh-spin');
+    const results = document.getElementById('results');
+    const meta = document.getElementById('meta');
     const status = document.getElementById('status');
-    const profile = document.getElementById('profile');
-    const progress = document.getElementById('progress');
-    const bar = document.getElementById('bar');
-    const barFill = document.getElementById('barFill');
-    const barPct = document.getElementById('barPct');
-    const barSpeed = document.getElementById('barSpeed');
+    const tabs = document.getElementById('tabs');
 
-    const fmtBytes = (n) => {
-      if (n < 1024) return n + ' B';
-      const units = ['KB', 'MB', 'GB', 'TB'];
-      let i = -1;
-      do { n /= 1024; i++; } while (n >= 1024 && i < units.length - 1);
-      return n.toFixed(n < 10 ? 1 : 0) + ' ' + units[i];
-    };
+    let allVideos = [];
+    let activeTab = 'todo';
+    let doneSet = new Set();
+    let descRows = [];              // [{ mediaId, title, description, day }]
+    const matchById = new Map();    // video id -> { tier, score, row, proposed }
 
-    // Load the profiles this API key can upload to.
-    (async () => {
-      try {
-        const { profiles, error } = await (await fetch('/api/profiles')).json();
-        if (error) throw new Error(error);
-        profile.innerHTML = '<option value="">Select a profile…</option>' +
-          profiles.map(p =>
-            `<option value="${p.id}">${p.screenname || p.username} (${p.id})</option>`
-          ).join('');
-      } catch (err) {
-        profile.innerHTML = '<option value="">Could not load profiles</option>';
-        status.className = 'err';
-        status.textContent = '❌ Could not load profiles: ' + err.message;
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    // ---- Title matching (bundled tracker rows are the source of truth) ------
+    function normTitle(s) {
+      return String(s || '')
+        .toLowerCase()
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/\[[^\]]*\]/g, ' ')
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9 ]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    function tokenSet(s) { return new Set(normTitle(s).split(' ').filter(Boolean)); }
+    function dice(a, b) {
+      const A = tokenSet(a), B = tokenSet(b);
+      if (!A.size || !B.size) return 0;
+      let inter = 0; for (const x of A) if (B.has(x)) inter++;
+      return (2 * inter) / (A.size + B.size);
+    }
+    function score(a, b) {
+      const na = normTitle(a), nb = normTitle(b);
+      if (!na || !nb) return 0;
+      let s = dice(a, b);
+      if (na === nb) return 1;
+      if (na.includes(nb) || nb.includes(na)) s = Math.max(s, 0.85);
+      return s;
+    }
+    const STRONG = 0.7, REVIEW = 0.45;
+
+    function buildMatches() {
+      matchById.clear();
+      const byId = new Map();
+      for (const r of descRows) if (r.mediaId) byId.set(r.mediaId.toLowerCase(), r);
+      for (const v of allVideos) {
+        const idHit = byId.get(String(v.id).toLowerCase());
+        let m;
+        if (idHit) {
+          m = { tier: 'exact', score: 1, row: idHit };
+        } else {
+          let best = null, bs = 0;
+          for (const r of descRows) { const sc = score(v.title, r.title); if (sc > bs) { bs = sc; best = r; } }
+          const tier = bs >= STRONG ? 'strong' : bs >= REVIEW ? 'review' : 'none';
+          m = { tier, score: bs, row: bs > 0 ? best : null };
+        }
+        m.proposed = m.row ? String(m.row.description || '').trim() : '';
+        matchById.set(String(v.id), m);
       }
-    })();
-
-    // POST the file straight to Dailymotion's upload URL, reporting live
-    // percent + speed. Resolves with the hosted file URL.
-    function uploadToDailymotion(uploadUrl, file) {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', uploadUrl);
-
-        const startedAt = Date.now();
-        xhr.upload.addEventListener('progress', (ev) => {
-          if (!ev.lengthComputable) return;
-          const pct = Math.round((ev.loaded / ev.total) * 100);
-          barFill.style.width = pct + '%';
-          barPct.textContent = pct + '%';
-
-          const elapsed = (Date.now() - startedAt) / 1000;
-          if (elapsed > 0) {
-            barSpeed.textContent = fmtBytes(ev.loaded / elapsed) + '/s';
-          }
-        });
-
-        xhr.addEventListener('load', () => {
-          let data = {};
-          try { data = JSON.parse(xhr.responseText); } catch {}
-          if (xhr.status >= 200 && xhr.status < 300 && data.url) {
-            resolve(data.url);
-          } else {
-            reject(new Error(data.error?.message || data.message || `Upload failed (HTTP ${xhr.status})`));
-          }
-        });
-        xhr.addEventListener('error', () => reject(new Error('Network error during upload.')));
-
-        const fd = new FormData();
-        fd.append('file', file);
-        xhr.send(fd);
-      });
     }
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const file = form.querySelector('input[name=video]').files[0];
-      if (!file) return;
+    function confBadge(m) {
+      if (!m) return '';
+      if (m.tier === 'exact') return '<span class="conf exact">✓ ID match</span>';
+      const pct = Math.round(m.score * 100);
+      if (m.tier === 'strong') return `<span class="conf strong">Strong ${pct}%</span>`;
+      if (m.tier === 'review') return `<span class="conf review">Review ${pct}% — check this</span>`;
+      return '<span class="conf none">No confident match — pick below</span>';
+    }
 
-      btn.disabled = true;
-      btn.textContent = 'Uploading…';
-      status.className = '';
-      status.style.display = 'none';
+    const hasDescription = (v) => !!(v.description && String(v.description).trim());
 
-      // Reset + show the progress bar.
-      progress.classList.add('show');
-      bar.classList.remove('indeterminate');
-      barFill.style.width = '0%';
-      barPct.textContent = '0%';
-      barSpeed.textContent = '';
+    function fmtDuration(secs) {
+      if (!secs && secs !== 0) return '—';
+      const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60);
+      const pad = (n) => String(n).padStart(2, '0');
+      return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+    }
+    function fmtDate(unix) {
+      if (!unix) return '—';
+      return new Date(unix * 1000).toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+    }
+    function visibilityPill(v) {
+      if (v.private) return '<span class="pill private">Private</span>';
+      if (v.published) return '<span class="pill public">Public</span>';
+      return '<span class="pill draft">Unpublished</span>';
+    }
+    function tagChips(tags) {
+      if (!tags || !tags.length) return '<span class="muted">—</span>';
+      return tags.map((t) => {
+        const isStage = /^stage:/i.test(t);
+        return `<span class="tag${isStage ? ' stage-tag' : ''}">${esc(t)}</span>`;
+      }).join('');
+    }
 
+    const isDNP = (title) => /(^|[^a-z])DNP([^a-z]|$)/i.test(String(title || ''));
+    const isPublic = (v) => !v.private && v.published;
+
+    // The Description cell: a green tick when the video already has one, else an
+    // "Add description" button that opens the modal pre-filled from the tracker.
+    function descCell(v) {
+      if (hasDescription(v)) return '<span class="has-desc">✓ Has description</span>';
+      const m = matchById.get(String(v.id));
+      const noMatch = !(m && m.proposed);
+      return `<button class="add-desc-btn${noMatch ? ' no-match' : ''}" data-id="${esc(v.id)}">+ Add description</button>`;
+    }
+
+    function rowFor(v) {
+      const done = doneSet.has(String(v.id));
+      const cls = [isDNP(v.title) ? 'dnp' : '', done ? 'done' : ''].filter(Boolean).join(' ');
+      return `
+        <tr${cls ? ` class="${cls}"` : ''} data-row-id="${esc(v.id)}">
+          <td><button class="done-toggle${done ? ' is-done' : ''}" data-id="${esc(v.id)}">${done ? '✓ Done' : (isPublic(v) ? 'Mark done' : 'Mark done<br><span class="plus-public">+ public</span>')}</button></td>
+          <td><div class="id-cell"><code class="id">${esc(v.id)}</code>
+            <button class="copy" data-id="${esc(v.id)}" title="Copy media ID">Copy</button></div></td>
+          <td class="title">${esc(v.title) || '<span class="muted">(untitled)</span>'}</td>
+          <td>${fmtDuration(v.duration)}</td>
+          <td>${esc(fmtDate(v.created_time))}</td>
+          <td>${v.views_total != null ? Number(v.views_total).toLocaleString() : '—'}</td>
+          <td>${visibilityPill(v)}</td>
+          <td>${descCell(v)}</td>
+          <td class="tags">${tagChips(v.tags)}</td>
+          <td>${v.url ? `<a class="watch" href="${esc(v.url)}" target="_blank" rel="noopener">Watch ↗</a>` : '—'}</td>
+          <td>${isPublic(v) ? '<span class="muted">—</span>' : `<button class="publish-btn" data-id="${esc(v.id)}">Publish</button>`}</td>
+          <td><button class="delete-btn" data-id="${esc(v.id)}">Delete</button></td>
+        </tr>`;
+    }
+
+    function tableFor(videos) {
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Done</th><th>Media ID</th><th>Title</th><th>Duration</th><th>Created</th>
+              <th>Views</th><th>Visibility</th><th>Description</th><th>Tags</th><th>Links</th><th>Publish</th><th>Delete</th>
+            </tr></thead>
+            <tbody>${videos.map(rowFor).join('')}</tbody>
+          </table>
+        </div>`;
+    }
+
+    const isDoneV = (v) => doneSet.has(String(v.id));
+
+    function renderTabs() {
+      const total = allVideos.length;
+      const done = allVideos.filter(isDoneV).length;
+      document.getElementById('count-todo').textContent = total - done;
+      document.getElementById('count-done').textContent = done;
+      document.getElementById('count-all').textContent = total;
+      tabs.style.display = total ? 'flex' : 'none';
+      for (const t of tabs.querySelectorAll('.tab')) {
+        t.classList.toggle('active', t.dataset.tab === activeTab);
+      }
+    }
+
+    function render() {
+      renderTabs();
+      let videos = allVideos;
+      if (activeTab === 'todo') videos = allVideos.filter((v) => !isDoneV(v));
+      else if (activeTab === 'done') videos = allVideos.filter(isDoneV);
+
+      if (!allVideos.length) {
+        results.innerHTML = '<p class="muted">No videos found for this tag.</p>';
+        return;
+      }
+      if (!videos.length) {
+        const msg = activeTab === 'done' ? 'Nothing marked done yet.'
+          : activeTab === 'todo' ? 'All caught up — everything is marked done. 🎉'
+          : 'No videos found for this tag.';
+        results.innerHTML = `<p class="muted">${msg}</p>`;
+        return;
+      }
+      const groups = {};
+      for (const v of videos) {
+        const s = v.stage && v.stage.trim() ? v.stage.trim() : 'No stage';
+        (groups[s] = groups[s] || []).push(v);
+      }
+      const names = Object.keys(groups).sort((a, b) => {
+        if (a === 'No stage') return 1;
+        if (b === 'No stage') return -1;
+        return a.localeCompare(b, undefined, { numeric: true });
+      });
+      results.innerHTML = names.map((name) => `
+        <section class="stage${name === 'No stage' ? ' no-stage' : ''}">
+          <h2>${name === 'No stage' ? 'No stage' : 'Stage: ' + esc(name)} <span class="gcount">${groups[name].length}</span></h2>
+          ${tableFor(groups[name])}
+        </section>`).join('');
+    }
+
+    // ---- Add-description modal ---------------------------------------------
+    const modal = document.getElementById('modal');
+    const mTitle = document.getElementById('m-title');
+    const mId = document.getElementById('m-id');
+    const mConf = document.getElementById('m-conf');
+    const mSource = document.getElementById('m-source');
+    const mDesc = document.getElementById('m-desc');
+    const mConfirm = document.getElementById('m-confirm');
+    let modalVideoId = null;
+
+    function sourceOptions(selectedRow) {
+      const opts = ['<option value="">— none / clear —</option>'];
+      descRows.forEach((r, i) => {
+        const sel = r === selectedRow ? ' selected' : '';
+        const metaBits = [r.day, r.mediaId].filter(Boolean).join(' · ');
+        opts.push(`<option value="${i}"${sel}>${esc(r.title)}${metaBits ? ' · ' + esc(metaBits) : ''}</option>`);
+      });
+      return opts.join('');
+    }
+
+    function updateConfirmState() {
+      mConfirm.disabled = !mDesc.value.trim();
+    }
+
+    function openModal(id) {
+      const v = allVideos.find((x) => String(x.id) === String(id));
+      if (!v) return;
+      modalVideoId = String(id);
+      const m = matchById.get(String(id));
+      mTitle.textContent = v.title || '(untitled)';
+      mId.textContent = v.id;
+      mConf.innerHTML = confBadge(m);
+      mSource.innerHTML = sourceOptions(m && m.row);
+      mDesc.value = m && m.proposed ? m.proposed : '';
+      updateConfirmState();
+      modal.hidden = false;
+      mDesc.focus();
+    }
+
+    function closeModal() { modal.hidden = true; modalVideoId = null; }
+
+    mSource.addEventListener('change', () => {
+      const val = mSource.value;
+      if (val === '') { mDesc.value = ''; mConf.innerHTML = ''; }
+      else {
+        const r = descRows[+val];
+        mDesc.value = String(r.description || '').trim();
+        mConf.innerHTML = '<span class="conf strong">✓ Chosen</span>';
+      }
+      updateConfirmState();
+    });
+    mDesc.addEventListener('input', updateConfirmState);
+    document.getElementById('m-close').addEventListener('click', closeModal);
+    document.getElementById('m-cancel').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) closeModal(); });
+
+    mConfirm.addEventListener('click', async () => {
+      const id = modalVideoId;
+      const description = mDesc.value.trim();
+      if (!id || !description) return;
+      mConfirm.disabled = true;
+      mConfirm.textContent = 'Saving…';
+      status.className = 'info';
+      status.textContent = 'Adding description on Dailymotion…';
       try {
-        // 1. Ask our server for a one-time Dailymotion upload URL.
-        const urlRes = await (await fetch('/api/upload-url')).json();
-        if (urlRes.error) throw new Error(urlRes.error);
-
-        // 2. Upload the file directly to Dailymotion (this is the tracked leg).
-        const fileUrl = await uploadToDailymotion(urlRes.uploadUrl, file);
-
-        // 3. Hosted; now our server creates + publishes the video.
-        barFill.style.width = '100%';
-        barPct.textContent = '100%';
-        bar.classList.add('indeterminate');
-        barSpeed.textContent = '';
-        btn.textContent = 'Publishing…';
-
-        const res = await fetch('/api/create-video', {
+        const res = await fetch('/api/update-video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileUrl,
-            profileId: form.profileId.value,
-            title: form.title.value,
-            channel: form.channel.value,
-            description: form.description.value,
-            tags: form.tags.value,
-            published: form.published.checked,
-            private: form.private.checked,
-            is_created_for_kids: form.is_created_for_kids.checked,
-          }),
+          body: JSON.stringify({ id, description }),
         });
         const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Unknown error');
-
-        status.className = 'ok';
-        const owner = data.owner ? ` to <strong>${data.owner.screenname || data.owner.username}</strong>` : '';
-        status.innerHTML = `✅ Uploaded${owner}! Video ID <strong>${data.id}</strong> — <a href="${data.watch}" target="_blank">watch it</a>`;
+        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        const v = allVideos.find((x) => String(x.id) === String(id));
+        if (v) {
+          if (data.video) Object.assign(v, data.video);
+          else v.description = description;
+        }
+        closeModal();
+        render();
+        status.className = 'info';
+        status.textContent = '✓ Description added on Dailymotion.';
       } catch (err) {
         status.className = 'err';
         status.textContent = '❌ ' + err.message;
       } finally {
-        progress.classList.remove('show');
-        bar.classList.remove('indeterminate');
-        btn.disabled = false;
-        btn.textContent = 'Upload video';
+        mConfirm.disabled = false;
+        mConfirm.textContent = 'Confirm & add';
       }
     });
+
+    // Open the modal from an "Add description" button.
+    results.addEventListener('click', (e) => {
+      const btn = e.target.closest('.add-desc-btn');
+      if (!btn) return;
+      openModal(btn.dataset.id);
+    });
+
+    // ---- Done toggle (also publishes) --------------------------------------
+    results.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.done-toggle');
+      if (!btn) return;
+      const id = String(btn.dataset.id);
+      const makeDone = !doneSet.has(id);
+      if (makeDone) doneSet.add(id); else doneSet.delete(id);
+      render();
+
+      if (!makeDone) {
+        try {
+          const res = await fetch('/api/done', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, done: false }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        } catch (err) {
+          doneSet.add(id); render();
+          status.className = 'err';
+          status.textContent = '❌ Could not save: ' + err.message;
+        }
+        return;
+      }
+
+      const vid = allVideos.find((x) => String(x.id) === id);
+      const needsPublish = vid ? !isPublic(vid) : true;
+      status.className = 'info';
+      status.textContent = needsPublish ? 'Marking done + publishing on Dailymotion…' : 'Marking done…';
+
+      try {
+        const res = await fetch('/api/done', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, done: true }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+      } catch (err) {
+        doneSet.delete(id); render();
+        status.className = 'err';
+        status.textContent = '❌ Could not mark done: ' + err.message;
+        return;
+      }
+
+      if (!needsPublish) {
+        status.className = 'info';
+        status.textContent = '✓ Marked done.';
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/publish', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        const v = allVideos.find((x) => String(x.id) === id);
+        if (v) { if (data.video) Object.assign(v, data.video); else { v.private = false; v.published = true; } }
+        render();
+        status.className = 'info';
+        status.textContent = '✓ Marked done and published on Dailymotion.';
+      } catch (err) {
+        status.className = 'err';
+        status.textContent = '⚠ Marked done, but could not publish: ' + err.message;
+      }
+    });
+
+    // ---- Publish -----------------------------------------------------------
+    results.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.publish-btn');
+      if (!btn) return;
+      const id = String(btn.dataset.id);
+      btn.disabled = true;
+      btn.textContent = 'Publishing…';
+      try {
+        const res = await fetch('/api/publish', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        const v = allVideos.find((x) => String(x.id) === id);
+        if (v) { if (data.video) Object.assign(v, data.video); else { v.private = false; v.published = true; } }
+        render();
+        status.className = 'info';
+        status.textContent = '✓ Published on Dailymotion.';
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Publish';
+        status.className = 'err';
+        status.textContent = '❌ Could not publish: ' + err.message;
+      }
+    });
+
+    // ---- Delete ------------------------------------------------------------
+    results.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.delete-btn');
+      if (!btn) return;
+      const id = String(btn.dataset.id);
+      const v = allVideos.find((x) => String(x.id) === id);
+      const title = (v && v.title) ? v.title : id;
+      const ok = window.confirm(
+        `Permanently DELETE this video from Dailymotion?\n\n“${title}”\n(id: ${id})\n\n` +
+        `⚠️ This cannot be undone. Once it's gone, it's gone — the video is removed from Dailymotion for everyone.`
+      );
+      if (!ok) return;
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+      status.className = 'info';
+      status.textContent = 'Deleting from Dailymotion…';
+      try {
+        const res = await fetch('/api/videos/' + encodeURIComponent(id), { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        allVideos = allVideos.filter((x) => String(x.id) !== id);
+        doneSet.delete(id);
+        render();
+        status.className = 'info';
+        status.textContent = '🗑️ Deleted from Dailymotion.';
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+        status.className = 'err';
+        status.textContent = '❌ Could not delete: ' + err.message;
+      }
+    });
+
+    // ---- Tabs + copy -------------------------------------------------------
+    tabs.addEventListener('click', (e) => {
+      const t = e.target.closest('.tab');
+      if (!t || t.dataset.tab === activeTab) return;
+      activeTab = t.dataset.tab;
+      render();
+    });
+
+    results.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.copy');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      try { await navigator.clipboard.writeText(id); }
+      catch {
+        const ta = document.createElement('textarea');
+        ta.value = id; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+      }
+      const orig = btn.textContent;
+      btn.textContent = 'Copied ✓';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    });
+
+    function showMeta(data) {
+      const when = data.cachedAt ? new Date(data.cachedAt).toLocaleString() : 'unknown';
+      const src = data.cached ? 'from cache' : 'freshly fetched';
+      const dcount = descRows.length ? ` · ${descRows.length} tracker rows loaded` : '';
+      meta.innerHTML = `${data.count} video${data.count === 1 ? '' : 's'} tagged <strong>#${esc(data.tag)}</strong> — last updated ${esc(when)} (${src})${dcount}.`;
+    }
+
+    // Load the bundled tracker descriptions once.
+    async function loadDescriptions() {
+      try {
+        const res = await fetch('/api/descriptions');
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.rows)) descRows = data.rows;
+      } catch { /* non-fatal: the Add-description button just won't pre-fill */ }
+    }
+
+    async function fetchVideos({ refresh }) {
+      const tag = tagInput.value.trim() || 'EFOC26';
+      loadBtn.disabled = refreshBtn.disabled = true;
+      if (refresh) {
+        refreshSpin.style.display = 'inline-block';
+        status.style.display = 'none';
+      } else {
+        status.className = 'info';
+        status.textContent = 'Loading…';
+        meta.textContent = '';
+        results.innerHTML = '';
+        tabs.style.display = 'none';
+      }
+      try {
+        const url = '/api/videos' + (refresh ? '/refresh' : '') + '?tag=' + encodeURIComponent(tag);
+        const [res, doneRes] = await Promise.all([
+          fetch(url, { method: refresh ? 'POST' : 'GET' }),
+          fetch('/api/done'),
+        ]);
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
+        try {
+          const dd = await doneRes.json();
+          if (Array.isArray(dd.done)) doneSet = new Set(dd.done.map(String));
+        } catch { /* non-fatal */ }
+        refreshSpin.style.display = 'none';
+        loadBtn.disabled = refreshBtn.disabled = false;
+        status.style.display = 'none';
+        allVideos = data.videos || [];
+        buildMatches();
+        showMeta(data);
+        render();
+      } catch (err) {
+        refreshSpin.style.display = 'none';
+        loadBtn.disabled = refreshBtn.disabled = false;
+        status.className = 'err';
+        status.textContent = '❌ ' + err.message;
+      }
+    }
+
+    loadBtn.addEventListener('click', () => fetchVideos({ refresh: false }));
+    refreshBtn.addEventListener('click', () => fetchVideos({ refresh: true }));
+    tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchVideos({ refresh: false }); });
+
+    // Load descriptions first (so matches are ready), then the videos.
+    loadDescriptions().then(() => fetchVideos({ refresh: false }));
   </script>
 </body>
 </html>

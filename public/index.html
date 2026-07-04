@@ -102,6 +102,19 @@
     }
     .add-desc-btn:hover { background: #fef0c7; }
     .add-desc-btn.no-match { background: #fff; color: #98a2b3; border-color: var(--border); font-weight: 600; }
+    /* Inline title suggestion */
+    .title-suggest { margin-top: .4rem; font-weight: 400; font-size: .78rem; color: #667085; white-space: normal; line-height: 1.35; }
+    .title-suggest .ts-label { font-weight: 700; color: #b54708; }
+    .title-suggest .ts-text { color: #1a1a2e; }
+    .fix-title-btn {
+      display: inline-block; margin-top: .3rem; padding: .25rem .55rem; font-size: .75rem;
+      background: #fffaeb; color: #b54708; border: 1px solid #fedf89; border-radius: 6px;
+      cursor: pointer; font-weight: 700; white-space: nowrap;
+    }
+    .fix-title-btn:hover { background: #fef0c7; }
+    .fix-title-btn.tentative { background: #fff; color: #667085; border-color: var(--border); font-weight: 600; }
+    .fix-title-btn.tentative:hover { background: #f9fafb; }
+    .m-input { width: 100%; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px; font-size: .95rem; font-family: inherit; }
     .muted { color: #98a2b3; }
     a.watch { color: var(--accent); text-decoration: none; font-weight: 600; }
     #status { margin-top: 1rem; padding: .85rem 1rem; border-radius: 8px; display: none; font-size: .9rem; }
@@ -175,16 +188,17 @@
         <div class="modal-vtitle" id="m-title"></div>
         <div class="modal-vid"><code class="id" id="m-id"></code></div>
 
-        <div class="modal-label">Description source <span id="m-conf"></span></div>
+        <div class="modal-label">Tracker source <span id="m-conf"></span></div>
         <select id="m-source"></select>
 
-        <div class="modal-label">Description</div>
+        <div class="modal-label" id="m-editor-label">Description</div>
+        <input type="text" id="m-input" class="m-input" hidden placeholder="Title from the tracker…" />
         <textarea id="m-desc" placeholder="Description from the tracker…"></textarea>
-        <p class="hint">This writes the description to the live Dailymotion video. Titles and tags are left untouched.</p>
+        <p class="hint" id="m-hint"></p>
       </div>
       <div class="modal-foot">
         <button class="secondary" id="m-cancel">Cancel</button>
-        <button id="m-confirm">Confirm &amp; add</button>
+        <button id="m-confirm">Confirm</button>
       </div>
     </div>
   </div>
@@ -304,6 +318,29 @@
       return `<button class="add-desc-btn${noMatch ? ' no-match' : ''}" data-id="${esc(v.id)}">+ Add description</button>`;
     }
 
+    // The Title cell shows the current title, plus a "Use title" suggestion when
+    // a matched tracker row has a different (cleaner) title.
+    function titleCell(v) {
+      const base = esc(v.title) || '<span class="muted">(untitled)</span>';
+      const m = matchById.get(String(v.id));
+      if (!m || !m.row || !m.row.title) return base;
+      if (normTitle(m.row.title) === normTitle(v.title)) return base;  // already matches
+      const confident = m.tier === 'exact' || m.tier === 'strong';
+      if (confident) {
+        // Show the proposed clean title inline for confident matches.
+        return `${base}
+          <div class="title-suggest">
+            <span class="ts-label">Tracker:</span> “<span class="ts-text">${esc(m.row.title)}</span>”<br>
+            <button class="fix-title-btn" data-id="${esc(v.id)}">✎ Use this title</button>
+          </div>`;
+      }
+      // Low confidence — don't display a possibly-wrong guess; let them pick in the modal.
+      return `${base}
+        <div class="title-suggest">
+          <button class="fix-title-btn tentative" data-id="${esc(v.id)}">✎ Set title from tracker…</button>
+        </div>`;
+    }
+
     function rowFor(v) {
       const done = doneSet.has(String(v.id));
       const cls = [isDNP(v.title) ? 'dnp' : '', done ? 'done' : ''].filter(Boolean).join(' ');
@@ -312,7 +349,7 @@
           <td><button class="done-toggle${done ? ' is-done' : ''}" data-id="${esc(v.id)}">${done ? '✓ Done' : (isPublic(v) ? 'Mark done' : 'Mark done<br><span class="plus-public">+ public</span>')}</button></td>
           <td><div class="id-cell"><code class="id">${esc(v.id)}</code>
             <button class="copy" data-id="${esc(v.id)}" title="Copy media ID">Copy</button></div></td>
-          <td class="title">${esc(v.title) || '<span class="muted">(untitled)</span>'}</td>
+          <td class="title">${titleCell(v)}</td>
           <td>${fmtDuration(v.duration)}</td>
           <td>${esc(fmtDate(v.created_time))}</td>
           <td>${v.views_total != null ? Number(v.views_total).toLocaleString() : '—'}</td>
@@ -386,15 +423,34 @@
         </section>`).join('');
     }
 
-    // ---- Add-description modal ---------------------------------------------
+    // ---- Field modal (shared by "Add description" + "Use title") -----------
     const modal = document.getElementById('modal');
+    const mHeading = document.getElementById('m-heading');
     const mTitle = document.getElementById('m-title');
     const mId = document.getElementById('m-id');
     const mConf = document.getElementById('m-conf');
     const mSource = document.getElementById('m-source');
-    const mDesc = document.getElementById('m-desc');
+    const mEditorLabel = document.getElementById('m-editor-label');
+    const mInput = document.getElementById('m-input');    // title editor (single line)
+    const mDesc = document.getElementById('m-desc');       // description editor (textarea)
+    const mHint = document.getElementById('m-hint');
     const mConfirm = document.getElementById('m-confirm');
     let modalVideoId = null;
+    let modalField = 'description';   // 'description' | 'title'
+
+    // The active editor element for the current mode.
+    const editor = () => (modalField === 'title' ? mInput : mDesc);
+    // The tracker value to propose for the current mode.
+    const rowValue = (r) => String((modalField === 'title' ? r.title : r.description) || '').trim();
+
+    const CONFIG = {
+      description: { heading: 'Add description', label: 'Description', confirm: 'Confirm & add',
+        hint: 'This writes the description to the live Dailymotion video. Titles and tags are left untouched.',
+        verb: 'Adding description', done: 'Description added' },
+      title: { heading: 'Update title', label: 'Title', confirm: 'Update title',
+        hint: 'This overwrites the title on the live Dailymotion video. Description and tags are left untouched.',
+        verb: 'Updating title', done: 'Title updated' },
+    };
 
     function sourceOptions(selectedRow) {
       const opts = ['<option value="">— none / clear —</option>'];
@@ -406,38 +462,53 @@
       return opts.join('');
     }
 
-    function updateConfirmState() {
-      mConfirm.disabled = !mDesc.value.trim();
-    }
+    function updateConfirmState() { mConfirm.disabled = !editor().value.trim(); }
 
-    function openModal(id) {
+    function openModal(id, field) {
       const v = allVideos.find((x) => String(x.id) === String(id));
       if (!v) return;
       modalVideoId = String(id);
+      modalField = field === 'title' ? 'title' : 'description';
+      const cfg = CONFIG[modalField];
       const m = matchById.get(String(id));
-      mTitle.textContent = v.title || '(untitled)';
+
+      mHeading.textContent = cfg.heading;
+      mEditorLabel.textContent = cfg.label;
+      mConfirm.textContent = cfg.confirm;
+      mHint.textContent = cfg.hint;
+      mTitle.textContent = v.title || '(untitled)';   // always show the video title
       mId.textContent = v.id;
       mConf.innerHTML = confBadge(m);
       mSource.innerHTML = sourceOptions(m && m.row);
-      mDesc.value = m && m.proposed ? m.proposed : '';
+
+      // Show the right editor, hide the other.
+      const isTitle = modalField === 'title';
+      mInput.hidden = !isTitle;
+      mDesc.hidden = isTitle;
+      // Pre-fill the best match — but for titles only when the match is
+      // confident, so a low-confidence guess isn't silently written as the title.
+      const confident = m && (m.tier === 'exact' || m.tier === 'strong');
+      const prefill = m && m.row && (!isTitle || confident);
+      editor().value = prefill ? rowValue(m.row) : '';
+
       updateConfirmState();
       modal.hidden = false;
-      mDesc.focus();
+      editor().focus();
     }
 
     function closeModal() { modal.hidden = true; modalVideoId = null; }
 
     mSource.addEventListener('change', () => {
       const val = mSource.value;
-      if (val === '') { mDesc.value = ''; mConf.innerHTML = ''; }
+      if (val === '') { editor().value = ''; mConf.innerHTML = ''; }
       else {
-        const r = descRows[+val];
-        mDesc.value = String(r.description || '').trim();
+        editor().value = rowValue(descRows[+val]);
         mConf.innerHTML = '<span class="conf strong">✓ Chosen</span>';
       }
       updateConfirmState();
     });
     mDesc.addEventListener('input', updateConfirmState);
+    mInput.addEventListener('input', updateConfirmState);
     document.getElementById('m-close').addEventListener('click', closeModal);
     document.getElementById('m-cancel').addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
@@ -445,43 +516,48 @@
 
     mConfirm.addEventListener('click', async () => {
       const id = modalVideoId;
-      const description = mDesc.value.trim();
-      if (!id || !description) return;
+      const value = editor().value.trim();
+      const cfg = CONFIG[modalField];
+      if (!id || !value) return;
       mConfirm.disabled = true;
       mConfirm.textContent = 'Saving…';
       status.className = 'info';
-      status.textContent = 'Adding description on Dailymotion…';
+      status.textContent = `${cfg.verb} on Dailymotion…`;
       try {
+        const body = modalField === 'title' ? { id, title: value } : { id, description: value };
         const res = await fetch('/api/update-video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, description }),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
         const v = allVideos.find((x) => String(x.id) === String(id));
         if (v) {
           if (data.video) Object.assign(v, data.video);
-          else v.description = description;
+          else if (modalField === 'title') v.title = value;
+          else v.description = value;
         }
         closeModal();
+        buildMatches();   // title/description changed — refresh suggestions
         render();
         status.className = 'info';
-        status.textContent = '✓ Description added on Dailymotion.';
+        status.textContent = `✓ ${cfg.done} on Dailymotion.`;
       } catch (err) {
         status.className = 'err';
         status.textContent = '❌ ' + err.message;
       } finally {
         mConfirm.disabled = false;
-        mConfirm.textContent = 'Confirm & add';
+        mConfirm.textContent = cfg.confirm;
       }
     });
 
-    // Open the modal from an "Add description" button.
+    // Open the modal from the "Add description" / "Use title" buttons.
     results.addEventListener('click', (e) => {
-      const btn = e.target.closest('.add-desc-btn');
-      if (!btn) return;
-      openModal(btn.dataset.id);
+      const desc = e.target.closest('.add-desc-btn');
+      if (desc) return openModal(desc.dataset.id, 'description');
+      const title = e.target.closest('.fix-title-btn');
+      if (title) return openModal(title.dataset.id, 'title');
     });
 
     // ---- Done toggle (also publishes) --------------------------------------

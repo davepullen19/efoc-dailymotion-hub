@@ -106,14 +106,14 @@
     .title-suggest { margin-top: .4rem; font-weight: 400; font-size: .78rem; color: #667085; white-space: normal; line-height: 1.35; }
     .title-suggest .ts-label { font-weight: 700; color: #b54708; }
     .title-suggest .ts-text { color: #1a1a2e; }
-    .fix-title-btn {
+    .fix-title-btn, .fix-tags-btn {
       display: inline-block; margin-top: .3rem; padding: .25rem .55rem; font-size: .75rem;
       background: #fffaeb; color: #b54708; border: 1px solid #fedf89; border-radius: 6px;
       cursor: pointer; font-weight: 700; white-space: nowrap;
     }
-    .fix-title-btn:hover { background: #fef0c7; }
-    .fix-title-btn.tentative { background: #fff; color: #667085; border-color: var(--border); font-weight: 600; }
-    .fix-title-btn.tentative:hover { background: #f9fafb; }
+    .fix-title-btn:hover, .fix-tags-btn:hover { background: #fef0c7; }
+    .fix-title-btn.tentative, .fix-tags-btn.tentative { background: #fff; color: #667085; border-color: var(--border); font-weight: 600; }
+    .fix-title-btn.tentative:hover, .fix-tags-btn.tentative:hover { background: #f9fafb; }
     .m-input { width: 100%; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px; font-size: .95rem; font-family: inherit; }
     .muted { color: #98a2b3; }
     a.watch { color: var(--accent); text-decoration: none; font-weight: 600; }
@@ -306,6 +306,34 @@
       }).join('');
     }
 
+    // Tracker tags (comma-separated string) the video doesn't already have.
+    function missingTags(videoTags, trackerStr) {
+      const have = new Set((videoTags || []).map((t) => String(t).toLowerCase()));
+      const out = [];
+      for (const part of String(trackerStr || '').split(',')) {
+        const tag = part.trim();
+        if (tag && !have.has(tag.toLowerCase())) out.push(tag);
+      }
+      return out;
+    }
+
+    // Merge existing video tags with tracker tags (dedup, case-insensitive),
+    // keeping existing tags (e.g. stage:*) first — returns a comma-separated string.
+    function mergeTags(videoTags, trackerStr) {
+      const seen = new Set();
+      const out = [];
+      const add = (t) => {
+        const tag = String(t || '').trim();
+        if (!tag) return;
+        const k = tag.toLowerCase();
+        if (seen.has(k)) return;
+        seen.add(k); out.push(tag);
+      };
+      (videoTags || []).forEach(add);
+      String(trackerStr || '').split(',').forEach(add);
+      return out.join(', ');
+    }
+
     const isDNP = (title) => /(^|[^a-z])DNP([^a-z]|$)/i.test(String(title || ''));
     const isPublic = (v) => !v.private && v.published;
 
@@ -341,6 +369,29 @@
         </div>`;
     }
 
+    // The Tags cell shows the current tag chips, plus an "Add tags" suggestion
+    // when the matched tracker row has tags the video is missing. Applying them
+    // merges with (never replaces) the existing tags, so stage:* tags are kept.
+    function tagsCell(v) {
+      const chips = tagChips(v.tags);
+      const m = matchById.get(String(v.id));
+      const trackerTags = m && m.row ? String(m.row.tags || '').trim() : '';
+      if (!trackerTags) return chips;
+      const missing = missingTags(v.tags, trackerTags);
+      if (!missing.length) return chips;   // already has every tracker tag
+      const confident = m.tier === 'exact' || m.tier === 'strong';
+      if (confident) {
+        return `${chips}
+          <div class="title-suggest">
+            <button class="fix-tags-btn" data-id="${esc(v.id)}">＋ Add tags: ${esc(missing.join(', '))}</button>
+          </div>`;
+      }
+      return `${chips}
+        <div class="title-suggest">
+          <button class="fix-tags-btn tentative" data-id="${esc(v.id)}">＋ Add tags from tracker…</button>
+        </div>`;
+    }
+
     function rowFor(v) {
       const done = doneSet.has(String(v.id));
       const cls = [isDNP(v.title) ? 'dnp' : '', done ? 'done' : ''].filter(Boolean).join(' ');
@@ -355,8 +406,8 @@
           <td>${v.views_total != null ? Number(v.views_total).toLocaleString() : '—'}</td>
           <td>${visibilityPill(v)}</td>
           <td>${descCell(v)}</td>
-          <td class="tags">${tagChips(v.tags)}</td>
-          <td>${v.url ? `<a class="watch" href="${esc(v.url)}" target="_blank" rel="noopener">Watch ↗</a>` : '—'}</td>
+          <td class="tags">${tagsCell(v)}</td>
+          <td><a class="watch" href="https://studio.dailymotion.com/media/${esc(v.id)}/edit" target="_blank" rel="noopener">Dashboard ↗</a></td>
           <td>${isPublic(v) ? '<span class="muted">—</span>' : `<button class="publish-btn" data-id="${esc(v.id)}">Publish</button>`}</td>
           <td><button class="delete-btn" data-id="${esc(v.id)}">Delete</button></td>
         </tr>`;
@@ -436,20 +487,32 @@
     const mHint = document.getElementById('m-hint');
     const mConfirm = document.getElementById('m-confirm');
     let modalVideoId = null;
-    let modalField = 'description';   // 'description' | 'title'
+    let modalField = 'description';   // 'description' | 'title' | 'tags'
 
-    // The active editor element for the current mode.
-    const editor = () => (modalField === 'title' ? mInput : mDesc);
-    // The tracker value to propose for the current mode.
-    const rowValue = (r) => String((modalField === 'title' ? r.title : r.description) || '').trim();
+    // Description uses the textarea; title + tags use the single-line input.
+    const editor = () => (modalField === 'description' ? mDesc : mInput);
+    // The tracker value to propose for the current mode. Tags merge with the
+    // current video's existing tags so nothing already set is lost.
+    const rowValue = (r) => {
+      if (modalField === 'title') return String(r.title || '').trim();
+      if (modalField === 'description') return String(r.description || '').trim();
+      const v = allVideos.find((x) => String(x.id) === modalVideoId);
+      return mergeTags(v && v.tags, r.tags);
+    };
 
     const CONFIG = {
       description: { heading: 'Add description', label: 'Description', confirm: 'Confirm & add',
+        placeholder: 'Description from the tracker…',
         hint: 'This writes the description to the live Dailymotion video. Titles and tags are left untouched.',
         verb: 'Adding description', done: 'Description added' },
       title: { heading: 'Update title', label: 'Title', confirm: 'Update title',
+        placeholder: 'Title from the tracker…',
         hint: 'This overwrites the title on the live Dailymotion video. Description and tags are left untouched.',
         verb: 'Updating title', done: 'Title updated' },
+      tags: { heading: 'Add tags', label: 'Tags (comma-separated)', confirm: 'Update tags',
+        placeholder: 'Tags, comma-separated…',
+        hint: 'This replaces the tags on the live Dailymotion video with exactly this list — existing tags are already merged in and kept. Title and description are left untouched.',
+        verb: 'Updating tags', done: 'Tags updated' },
     };
 
     function sourceOptions(selectedRow) {
@@ -468,7 +531,7 @@
       const v = allVideos.find((x) => String(x.id) === String(id));
       if (!v) return;
       modalVideoId = String(id);
-      modalField = field === 'title' ? 'title' : 'description';
+      modalField = (field === 'title' || field === 'tags') ? field : 'description';
       const cfg = CONFIG[modalField];
       const m = matchById.get(String(id));
 
@@ -482,14 +545,22 @@
       mSource.innerHTML = sourceOptions(m && m.row);
 
       // Show the right editor, hide the other.
+      const isDesc = modalField === 'description';
       const isTitle = modalField === 'title';
-      mInput.hidden = !isTitle;
-      mDesc.hidden = isTitle;
-      // Pre-fill the best match — but for titles only when the match is
-      // confident, so a low-confidence guess isn't silently written as the title.
+      const isTags = modalField === 'tags';
+      mDesc.hidden = !isDesc;
+      mInput.hidden = isDesc;
+      mInput.placeholder = cfg.placeholder;
       const confident = m && (m.tier === 'exact' || m.tier === 'strong');
-      const prefill = m && m.row && (!isTitle || confident);
-      editor().value = prefill ? rowValue(m.row) : '';
+      if (isTags) {
+        // Always seed the current tags; add tracker tags only on a confident match.
+        editor().value = mergeTags(v.tags, (m && m.row && confident) ? m.row.tags : '');
+      } else {
+        // Pre-fill the best match — for titles only when the match is confident,
+        // so a low-confidence guess isn't silently written as the title.
+        const prefill = m && m.row && (!isTitle || confident);
+        editor().value = prefill ? rowValue(m.row) : '';
+      }
 
       updateConfirmState();
       modal.hidden = false;
@@ -524,7 +595,9 @@
       status.className = 'info';
       status.textContent = `${cfg.verb} on Dailymotion…`;
       try {
-        const body = modalField === 'title' ? { id, title: value } : { id, description: value };
+        const body = modalField === 'title' ? { id, title: value }
+          : modalField === 'tags' ? { id, tags: value }
+          : { id, description: value };
         const res = await fetch('/api/update-video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -536,6 +609,7 @@
         if (v) {
           if (data.video) Object.assign(v, data.video);
           else if (modalField === 'title') v.title = value;
+          else if (modalField === 'tags') v.tags = value.split(',').map((s) => s.trim()).filter(Boolean);
           else v.description = value;
         }
         closeModal();
@@ -558,6 +632,8 @@
       if (desc) return openModal(desc.dataset.id, 'description');
       const title = e.target.closest('.fix-title-btn');
       if (title) return openModal(title.dataset.id, 'title');
+      const tags = e.target.closest('.fix-tags-btn');
+      if (tags) return openModal(tags.dataset.id, 'tags');
     });
 
     // ---- Done toggle (also publishes) --------------------------------------

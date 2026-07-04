@@ -677,6 +677,25 @@ function trackerLabel(file) {
   return m ? `Day ${m[1]}` : file.replace(/\.csv$/i, '');
 }
 
+/**
+ * Normalize a CSV Tags cell into Dailymotion's comma-separated form:
+ * split on commas, drop a leading "#", trim, dedupe (case-insensitive), rejoin.
+ */
+function normalizeTags(raw) {
+  if (!raw) return '';
+  const seen = new Set();
+  const out = [];
+  for (const part of String(raw).split(',')) {
+    const tag = part.trim().replace(/^#+/, '').trim();
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+  }
+  return out.join(', ');
+}
+
 let descCache = null; // { rows, files, loadedAt }
 
 /** Parse every trackers/*.csv into description rows (cached). */
@@ -703,6 +722,7 @@ function loadDescriptionRows() {
     const iMedia = header.findIndex((h) => h.includes('media id'));
     const iTitle = header.findIndex((h) => h === 'title');
     const iDesc = header.findIndex((h) => h === 'description');
+    const iTags = header.findIndex((h) => h === 'tags');
     if (iTitle < 0 || iDesc < 0) {
       console.error(`⚠ tracker ${name} missing Title/Description columns`);
       continue;
@@ -714,8 +734,9 @@ function loadDescriptionRows() {
       const title = (line[iTitle] || '').trim();
       const description = (line[iDesc] || '').trim();
       const mediaId = iMedia >= 0 ? (line[iMedia] || '').trim() : '';
-      if (title && (description || mediaId)) {
-        rows.push({ mediaId, title, description, day });
+      const tags = iTags >= 0 ? normalizeTags(line[iTags]) : '';
+      if (title && (description || mediaId || tags)) {
+        rows.push({ mediaId, title, description, tags, day });
         kept++;
       }
     }

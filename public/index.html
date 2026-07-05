@@ -324,8 +324,10 @@
     const status = document.getElementById('status');
     const tabs = document.getElementById('tabs');
 
+    const TABS = ['todo', 'done', 'all', 'hidden'];
     let allVideos = [];
-    let activeTab = 'todo';
+    let activeTab = TABS.includes(localStorage.getItem('activeTab'))
+      ? localStorage.getItem('activeTab') : 'todo';
     let doneSet = new Set();
     let hiddenSet = new Set();
     let descRows = [];              // [{ mediaId, title, description, day }]
@@ -892,6 +894,7 @@
       const t = e.target.closest('.tab');
       if (!t || t.dataset.tab === activeTab) return;
       activeTab = t.dataset.tab;
+      try { localStorage.setItem('activeTab', activeTab); } catch { /* private mode */ }
       render();
     });
 

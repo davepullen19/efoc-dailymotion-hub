@@ -5,146 +5,250 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dailymotion — EFOC Video Hub</title>
   <style>
-    :root { --bg: #0a0a23; --accent: #0066dc; --border: #d0d5dd; }
+    :root {
+      --bg: #eceff4; --accent: #0066dc; --accent-hover: #0053b3; --accent-weak: #eff4ff;
+      --border: #e4e7ec; --border-strong: #d0d5dd;
+      --text: #101828; --text-2: #475467; --text-3: #667085; --text-4: #98a2b3;
+      --surface: #ffffff; --surface-2: #f9fafb;
+      --radius-sm: 7px; --radius: 10px; --radius-lg: 16px;
+      --shadow-sm: 0 1px 2px rgba(16,24,40,.06);
+      --shadow-md: 0 6px 20px rgba(16,24,40,.08);
+      --shadow-lg: 0 24px 60px rgba(16,24,40,.28);
+      --ring: 0 0 0 3px rgba(0,102,220,.22);
+      --ease: .18s cubic-bezier(.4,0,.2,1);
+    }
     * { box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f5f7fa; color: #1a1a2e; margin: 0; padding: 2rem;
+      background:
+        radial-gradient(1200px 600px at 100% -10%, #e6edff 0%, rgba(230,237,255,0) 55%),
+        radial-gradient(900px 500px at -10% 0%, #eef1f6 0%, rgba(238,241,246,0) 50%),
+        var(--bg);
+      background-attachment: fixed;
+      color: var(--text); margin: 0; padding: 2.5rem 2rem;
+      -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
     }
     .card {
-      max-width: 1280px; margin: 0 auto; background: #fff; padding: 2rem;
-      border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.06);
+      max-width: 1320px; margin: 0 auto; background: var(--surface);
+      padding: 2rem 2.25rem; border: 1px solid var(--border);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
     }
-    .top { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-    h1 { margin-top: 0; font-size: 1.4rem; }
-    p.sub { color: #667085; margin-top: -.5rem; font-size: .9rem; }
-    .controls { display: flex; gap: .5rem; align-items: flex-end; margin: 1rem 0 .5rem; flex-wrap: wrap; }
-    .controls label { display: block; font-weight: 600; margin-bottom: .35rem; font-size: .85rem; }
+    .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    h1 {
+      margin: 0; font-size: 1.55rem; font-weight: 800; letter-spacing: -.02em;
+      display: flex; align-items: center; gap: .6rem;
+    }
+    h1::before {
+      content: ""; width: 10px; height: 26px; border-radius: 4px;
+      background: linear-gradient(180deg, var(--accent), #3d8bff);
+      box-shadow: 0 2px 8px rgba(0,102,220,.35);
+    }
+    p.sub { color: var(--text-3); margin: .5rem 0 0; font-size: .9rem; line-height: 1.5; max-width: 68ch; }
+    p.sub code { background: var(--surface-2); border: 1px solid var(--border); padding: .05rem .35rem; border-radius: 5px; font-size: .82em; }
+
+    .controls {
+      display: flex; gap: .6rem; align-items: flex-end; flex-wrap: wrap;
+      margin: 1.5rem 0 .5rem; padding: 1rem 1.1rem;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+    }
+    .controls label { display: block; font-weight: 600; margin-bottom: .35rem; font-size: .8rem; color: var(--text-2); }
     input[type=text] {
-      padding: .55rem .7rem; border: 1px solid var(--border); border-radius: 8px;
-      font-size: .95rem; font-family: inherit; min-width: 200px;
+      padding: .58rem .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+      font-size: .95rem; font-family: inherit; min-width: 220px; background: var(--surface);
+      transition: border-color var(--ease), box-shadow var(--ease);
     }
+    input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
     button {
-      padding: .6rem 1rem; background: var(--accent); color: #fff; border: 0;
-      border-radius: 8px; font-size: .95rem; font-weight: 600; cursor: pointer;
+      padding: .6rem 1.05rem; background: var(--accent); color: #fff; border: 1px solid transparent;
+      border-radius: var(--radius-sm); font-size: .92rem; font-weight: 600; cursor: pointer;
+      transition: background var(--ease), box-shadow var(--ease), transform var(--ease), border-color var(--ease), color var(--ease);
     }
-    button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--border); }
-    button:disabled { opacity: .6; cursor: not-allowed; }
+    button:hover { background: var(--accent-hover); }
+    button:active { transform: translateY(1px); }
+    button.secondary { background: var(--surface); color: var(--accent); border-color: var(--border-strong); }
+    button.secondary:hover { background: var(--accent-weak); border-color: var(--accent); }
+    button:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+    :focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm); }
     .spin {
       display: inline-block; width: 15px; height: 15px; vertical-align: middle;
       border: 2px solid rgba(0,102,220,.25); border-top-color: var(--accent);
       border-radius: 50%; animation: spin .6s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .meta { color: #667085; font-size: .85rem; margin: .25rem 0 1rem; }
-    .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
+    .meta { color: var(--text-3); font-size: .85rem; margin: .5rem 0 1rem; }
+    .meta strong { color: var(--text-2); }
+
+    .tabs { display: flex; gap: .15rem; border-bottom: 1px solid var(--border); margin-bottom: .5rem; }
     .tab {
-      background: none; color: #667085; border: 0; border-bottom: 2px solid transparent;
-      padding: .55rem .9rem; margin-bottom: -1px; font-size: .9rem; font-weight: 600;
-      cursor: pointer; border-radius: 0; display: flex; align-items: center; gap: .4rem;
+      background: none; color: var(--text-3); border: 0; border-bottom: 2px solid transparent;
+      padding: .6rem .95rem; margin-bottom: -1px; font-size: .9rem; font-weight: 600;
+      cursor: pointer; border-radius: 0; display: flex; align-items: center; gap: .45rem;
+      transition: color var(--ease), border-color var(--ease);
     }
-    .tab:hover { color: #1a1a2e; }
+    .tab:hover { color: var(--text); }
     .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .tcount { background: #eef2ff; color: #3538cd; border-radius: 999px; padding: .05rem .5rem; font-size: .75rem; font-weight: 700; }
+    .tcount { background: var(--accent-weak); color: var(--accent); border-radius: 999px; padding: .05rem .5rem; font-size: .74rem; font-weight: 700; transition: background var(--ease), color var(--ease); }
     .tab.active .tcount { background: var(--accent); color: #fff; }
+
+    /* Passive completion progress (reflects the existing Done / total counts) */
+    .progress { display: flex; align-items: center; gap: .75rem; margin: 0 0 1.5rem; }
+    .progress-track { flex: 1; height: 7px; background: #e4e7ec; border-radius: 999px; overflow: hidden; }
+    .progress-bar { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, #12b76a, #32d583); transition: width .45s cubic-bezier(.4,0,.2,1); }
+    .progress-label { font-size: .8rem; font-weight: 600; color: var(--text-3); white-space: nowrap; }
+
     section.stage { margin-bottom: 2rem; }
-    section.stage h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: center; gap: .5rem; }
-    .gcount { background: #eef2ff; color: #3538cd; border-radius: 999px; padding: .05rem .55rem; font-size: .8rem; font-weight: 700; }
-    .no-stage h2 { color: #98a2b3; }
-    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
-    table { border-collapse: collapse; width: 100%; font-size: .85rem; }
-    th, td { text-align: left; padding: .6rem .7rem; border-bottom: 1px solid #eaecf0; vertical-align: top; white-space: nowrap; }
-    th { background: #f9fafb; font-weight: 600; color: #475467; }
-    tbody tr:last-child td { border-bottom: 0; }
-    tbody tr:hover { background: #fafbfc; }
-    tbody tr.dnp td { background: #fef3f2; color: #b42318; }
-    tbody tr.dnp:hover td { background: #fee4e2; }
-    tbody tr.dnp code.id { background: #fee4e2; color: #b42318; }
-    tbody tr.done td { background: #ecfdf3; color: #087443; }
-    tbody tr.done:hover td { background: #d1fadf; }
-    tbody tr.done td.title { text-decoration: line-through; opacity: .75; }
-    tbody tr.done.dnp td { background: #ecfdf3; color: #087443; }
-    .done-toggle {
-      padding: .3rem .6rem; font-size: .78rem; background: #fff; color: var(--accent);
-      border: 1px solid var(--border); border-radius: 6px; cursor: pointer; white-space: nowrap;
+    section.stage h2 { font-size: 1rem; font-weight: 700; margin: 0 0 .6rem; display: flex; align-items: center; gap: .5rem; letter-spacing: -.01em; }
+    .gcount { background: var(--accent-weak); color: var(--accent); border-radius: 999px; padding: .05rem .55rem; font-size: .78rem; font-weight: 700; }
+    .no-stage h2 { color: var(--text-4); }
+    .no-stage .gcount { background: #f2f4f7; color: var(--text-3); }
+
+    /* Video list — one self-contained row per video: content clusters left,
+       a tight status + action block sits right. No wide table, no dead gaps. */
+    .v-list { border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); background: var(--surface); overflow: hidden; }
+    .v-item {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 2rem;
+      padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+      transition: background var(--ease);
     }
+    .v-item:last-child { border-bottom: 0; }
+    .v-item:hover { background: var(--surface-2); }
+    .v-item.dnp { background: #fef3f2; }
+    .v-item.dnp:hover { background: #fee4e2; }
+    .v-item.dnp code.id { background: #fee4e2; color: #b42318; }
+    .v-item.done { background: #f6fef9; }
+    .v-item.done:hover { background: #ecfdf3; }
+    .v-item.done .v-title { text-decoration: line-through; opacity: .65; }
+
+    .v-main { flex: 1 1 auto; min-width: 0; }
+    .v-title { font-size: 1rem; font-weight: 700; line-height: 1.35; color: var(--text); letter-spacing: -.01em; }
+    .v-tags { margin-top: .65rem; }
+
+    .v-side { flex: 0 0 auto; width: 300px; display: flex; flex-direction: column; align-items: flex-end; gap: .6rem; }
+    .v-status { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; justify-content: flex-end; }
+    .v-actions { display: flex; gap: .4rem; flex-wrap: wrap; justify-content: flex-end; }
+    .v-utils { display: flex; gap: .35rem; align-items: center; justify-content: flex-end; opacity: .5; transition: opacity var(--ease); }
+    .v-item:hover .v-utils, .v-item:focus-within .v-utils { opacity: 1; }
+
+    @media (max-width: 760px) {
+      .v-item { flex-direction: column; gap: .85rem; }
+      .v-side { width: 100%; align-items: flex-start; }
+      .v-status, .v-actions, .v-utils { justify-content: flex-start; }
+    }
+
+    .done-toggle {
+      padding: .35rem .65rem; font-size: .78rem; background: var(--surface); color: var(--accent);
+      border: 1px solid var(--border-strong); border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap;
+      font-weight: 600; transition: background var(--ease), border-color var(--ease), color var(--ease);
+    }
+    .done-toggle:hover { background: var(--accent-weak); border-color: var(--accent); }
     .done-toggle.is-done { background: #067647; color: #fff; border-color: #067647; }
+    .done-toggle.is-done:hover { background: #05663d; }
     .done-toggle:disabled { opacity: .5; cursor: wait; }
     .done-toggle .plus-public { display: block; font-size: .7rem; font-weight: 700; opacity: .8; }
     .publish-btn {
-      padding: .3rem .6rem; font-size: .78rem; background: var(--accent); color: #fff;
-      border: 0; border-radius: 6px; cursor: pointer; white-space: nowrap;
+      padding: .35rem .65rem; font-size: .78rem; background: var(--accent); color: #fff;
+      border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap;
+      font-weight: 600; transition: background var(--ease);
     }
+    .publish-btn:hover { background: var(--accent-hover); }
     .publish-btn:disabled { opacity: .6; cursor: wait; }
+    /* Delete is destructive + rare: keep it a quiet ghost until hovered. */
     .delete-btn {
-      padding: .3rem .6rem; font-size: .78rem; background: #fff; color: #b42318;
-      border: 1px solid #fecdca; border-radius: 6px; cursor: pointer; white-space: nowrap;
+      padding: .3rem .5rem; font-size: .78rem; background: transparent; color: var(--text-3);
+      border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap;
+      font-weight: 600; transition: background var(--ease), border-color var(--ease), color var(--ease);
     }
-    .delete-btn:hover { background: #fef3f2; }
+    .delete-btn:hover { background: #fef3f2; color: #b42318; border-color: #fecdca; }
     .delete-btn:disabled { opacity: .6; cursor: wait; }
-    td.title { white-space: normal; min-width: 220px; font-weight: 600; }
-    td.tags { white-space: normal; max-width: 220px; }
-    .tag { display: inline-block; background: #f2f4f7; color: #475467; border-radius: 6px; padding: .1rem .4rem; margin: 0 .2rem .2rem 0; font-size: .75rem; }
-    .tag.stage-tag { background: #eef2ff; color: #3538cd; font-weight: 600; }
+    /* Secondary reference metadata, tucked under the title. */
+    .row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .5rem; font-size: .75rem; font-weight: 400; color: var(--text-4); }
+    .row-meta .dot { color: var(--border-strong); }
+    .row-meta code.id { font-size: .72rem; padding: .1rem .35rem; }
+    .v-utils .watch { font-size: .78rem; padding: .3rem .5rem; border-radius: var(--radius-sm); }
+    .v-utils .watch:hover { background: var(--accent-weak); text-decoration: none; }
+    .tag { display: inline-block; background: #f2f4f7; color: var(--text-2); border-radius: 6px; padding: .12rem .45rem; margin: 0 .25rem .25rem 0; font-size: .75rem; font-weight: 500; }
+    .tag.stage-tag { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
     .id-cell { display: flex; align-items: center; gap: .4rem; }
-    code.id { background: #f2f4f7; padding: .15rem .4rem; border-radius: 6px; font-size: .8rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .copy { padding: .25rem .5rem; font-size: .75rem; background: #fff; color: var(--accent); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+    code.id { background: #f2f4f7; padding: .18rem .45rem; border-radius: 6px; font-size: .8rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .copy { padding: .28rem .55rem; font-size: .75rem; background: var(--surface); color: var(--accent); border: 1px solid var(--border-strong); border-radius: 6px; cursor: pointer; transition: background var(--ease), border-color var(--ease), color var(--ease); }
+    .copy:hover { background: var(--accent-weak); border-color: var(--accent); }
     .copy.copied { background: #ecfdf3; color: #067647; border-color: #a6f4c5; }
-    .pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+    .pill { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .74rem; font-weight: 600; }
     .pill.private { background: #fef3f2; color: #b42318; }
     .pill.public { background: #ecfdf3; color: #067647; }
     .pill.draft { background: #fffaeb; color: #b54708; }
     /* Description column */
     .has-desc { color: #067647; font-weight: 600; font-size: .8rem; }
     .add-desc-btn {
-      padding: .3rem .6rem; font-size: .78rem; background: #fffaeb; color: #b54708;
-      border: 1px solid #fedf89; border-radius: 6px; cursor: pointer; white-space: nowrap; font-weight: 700;
+      padding: .35rem .65rem; font-size: .78rem; background: #fffaeb; color: #b54708;
+      border: 1px solid #fedf89; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; font-weight: 700;
+      transition: background var(--ease);
     }
     .add-desc-btn:hover { background: #fef0c7; }
-    .add-desc-btn.no-match { background: #fff; color: #98a2b3; border-color: var(--border); font-weight: 600; }
+    .add-desc-btn.no-match { background: var(--surface); color: var(--text-4); border-color: var(--border-strong); font-weight: 600; }
+    .add-desc-btn.no-match:hover { background: var(--surface-2); }
     /* Inline title suggestion */
-    .title-suggest { margin-top: .4rem; font-weight: 400; font-size: .78rem; color: #667085; white-space: normal; line-height: 1.35; }
+    .title-suggest { margin-top: .4rem; font-weight: 400; font-size: .78rem; color: var(--text-3); white-space: normal; line-height: 1.35; }
     .title-suggest .ts-label { font-weight: 700; color: #b54708; }
-    .title-suggest .ts-text { color: #1a1a2e; }
+    .title-suggest .ts-text { color: var(--text); }
     .fix-title-btn, .fix-tags-btn {
-      display: inline-block; margin-top: .3rem; padding: .25rem .55rem; font-size: .75rem;
-      background: #fffaeb; color: #b54708; border: 1px solid #fedf89; border-radius: 6px;
-      cursor: pointer; font-weight: 700; white-space: nowrap;
+      display: inline-block; margin-top: .3rem; padding: .28rem .6rem; font-size: .75rem;
+      background: #fffaeb; color: #b54708; border: 1px solid #fedf89; border-radius: var(--radius-sm);
+      cursor: pointer; font-weight: 700; white-space: nowrap; transition: background var(--ease);
     }
     .fix-title-btn:hover, .fix-tags-btn:hover { background: #fef0c7; }
-    .fix-title-btn.tentative, .fix-tags-btn.tentative { background: #fff; color: #667085; border-color: var(--border); font-weight: 600; }
-    .fix-title-btn.tentative:hover, .fix-tags-btn.tentative:hover { background: #f9fafb; }
-    .m-input { width: 100%; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px; font-size: .95rem; font-family: inherit; }
-    .muted { color: #98a2b3; }
-    a.watch { color: var(--accent); text-decoration: none; font-weight: 600; }
-    #status { margin-top: 1rem; padding: .85rem 1rem; border-radius: 8px; display: none; font-size: .9rem; }
-    #status.err { background: #fef3f2; color: #b42318; display: block; }
-    #status.info { background: #eff8ff; color: #175cd3; display: block; }
+    .fix-title-btn.tentative, .fix-tags-btn.tentative { background: var(--surface); color: var(--text-3); border-color: var(--border-strong); font-weight: 600; }
+    .fix-title-btn.tentative:hover, .fix-tags-btn.tentative:hover { background: var(--surface-2); }
+    .m-input { width: 100%; padding: .6rem .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: .95rem; font-family: inherit; transition: border-color var(--ease), box-shadow var(--ease); }
+    .m-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+    .muted { color: var(--text-4); }
+    a.watch { color: var(--accent); text-decoration: none; font-weight: 600; transition: color var(--ease); }
+    a.watch:hover { color: var(--accent-hover); text-decoration: underline; }
+
+    /* Floating toast */
+    #status {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 60;
+      max-width: min(400px, calc(100vw - 3rem)); padding: .85rem 1.1rem;
+      border-radius: var(--radius); box-shadow: var(--shadow-lg); display: none;
+      font-size: .9rem; font-weight: 500; border: 1px solid transparent;
+      animation: toastIn .28s cubic-bezier(.4,0,.2,1);
+    }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    #status.err { background: #fef3f2; color: #b42318; border-color: #fecdca; display: block; }
+    #status.info { background: #eff8ff; color: #175cd3; border-color: #b2ddff; display: block; }
 
     /* Modal */
-    .modal-overlay { position: fixed; inset: 0; background: rgba(16,24,40,.55); display: flex; align-items: center; justify-content: center; padding: 1.5rem; z-index: 50; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(16,24,40,.5); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 1.5rem; z-index: 50; animation: overlayIn .2s ease; }
+    @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
     .modal-overlay[hidden] { display: none; }
-    .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
-    .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.3rem; border-bottom: 1px solid #eaecf0; }
-    .modal-head h2 { margin: 0; font-size: 1.15rem; }
-    .modal-x { background: none; border: 0; color: #667085; font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 0 .3rem; }
-    .modal-body { padding: 1.1rem 1.3rem; overflow-y: auto; }
-    .modal-label { font-weight: 700; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: #667085; margin: 1rem 0 .4rem; }
+    .modal { background: var(--surface); border-radius: var(--radius-lg); width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); animation: modalIn .24s cubic-bezier(.4,0,.2,1); }
+    @keyframes modalIn { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.4rem; border-bottom: 1px solid var(--border); }
+    .modal-head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -.01em; }
+    .modal-x { background: none; border: 0; color: var(--text-3); font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 0 .3rem; border-radius: 6px; transition: color var(--ease), background var(--ease); }
+    .modal-x:hover { color: var(--text); background: var(--surface-2); }
+    .modal-body { padding: 1.2rem 1.4rem; overflow-y: auto; }
+    .modal-label { font-weight: 700; font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); margin: 1.1rem 0 .45rem; }
     .modal-label:first-child { margin-top: 0; }
     .modal-vtitle { font-size: 1.15rem; font-weight: 700; line-height: 1.3; }
-    .modal-vid { margin-top: .4rem; }
+    .modal-vid { margin-top: .45rem; }
     .modal select, .modal textarea {
-      width: 100%; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px;
-      font-size: .9rem; font-family: inherit;
+      width: 100%; padding: .6rem .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+      font-size: .9rem; font-family: inherit; transition: border-color var(--ease), box-shadow var(--ease);
     }
-    .modal textarea { min-height: 150px; resize: vertical; line-height: 1.4; }
-    .modal-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: 1rem 1.3rem; border-top: 1px solid #eaecf0; }
-    .conf { display: inline-block; border-radius: 999px; padding: .1rem .5rem; font-size: .72rem; font-weight: 700; margin-left: .4rem; }
+    .modal select:focus, .modal textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+    .modal textarea { min-height: 150px; resize: vertical; line-height: 1.5; }
+    .modal-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: 1rem 1.4rem; border-top: 1px solid var(--border); }
+    .conf { display: inline-block; border-radius: 999px; padding: .12rem .55rem; font-size: .72rem; font-weight: 700; margin-left: .4rem; }
     .conf.exact { background: #d1fadf; color: #067647; }
     .conf.strong { background: #d1e9ff; color: #175cd3; }
     .conf.review { background: #fef0c7; color: #b54708; }
     .conf.none { background: #fee4e2; color: #b42318; }
-    .modal .hint { font-size: .8rem; color: #667085; margin: .5rem 0 0; }
+    .modal .hint { font-size: .8rem; color: var(--text-3); margin: .6rem 0 0; line-height: 1.5; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
   </style>
 </head>
 <body>
@@ -171,6 +275,10 @@
       <button class="tab active" data-tab="todo">To do <span class="tcount" id="count-todo">0</span></button>
       <button class="tab" data-tab="done">Done <span class="tcount" id="count-done">0</span></button>
       <button class="tab" data-tab="all">All <span class="tcount" id="count-all">0</span></button>
+    </div>
+    <div class="progress" id="progress" style="display:none">
+      <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+      <span class="progress-label" id="progress-label"></span>
     </div>
     <div id="results"></div>
     <div id="status"></div>
@@ -394,36 +502,41 @@
 
     function rowFor(v) {
       const done = doneSet.has(String(v.id));
-      const cls = [isDNP(v.title) ? 'dnp' : '', done ? 'done' : ''].filter(Boolean).join(' ');
+      const cls = ['v-item', isDNP(v.title) ? 'dnp' : '', done ? 'done' : ''].filter(Boolean).join(' ');
+      const pub = isPublic(v);
+      const views = v.views_total != null ? Number(v.views_total).toLocaleString() + ' views' : '— views';
       return `
-        <tr${cls ? ` class="${cls}"` : ''} data-row-id="${esc(v.id)}">
-          <td><button class="done-toggle${done ? ' is-done' : ''}" data-id="${esc(v.id)}">${done ? '✓ Done' : (isPublic(v) ? 'Mark done' : 'Mark done<br><span class="plus-public">+ public</span>')}</button></td>
-          <td><div class="id-cell"><code class="id">${esc(v.id)}</code>
-            <button class="copy" data-id="${esc(v.id)}" title="Copy media ID">Copy</button></div></td>
-          <td class="title">${titleCell(v)}</td>
-          <td>${fmtDuration(v.duration)}</td>
-          <td>${esc(fmtDate(v.created_time))}</td>
-          <td>${v.views_total != null ? Number(v.views_total).toLocaleString() : '—'}</td>
-          <td>${visibilityPill(v)}</td>
-          <td>${descCell(v)}</td>
-          <td class="tags">${tagsCell(v)}</td>
-          <td><a class="watch" href="https://studio.dailymotion.com/media/${esc(v.id)}/edit" target="_blank" rel="noopener">Dashboard ↗</a></td>
-          <td>${isPublic(v) ? '<span class="muted">—</span>' : `<button class="publish-btn" data-id="${esc(v.id)}">Publish</button>`}</td>
-          <td><button class="delete-btn" data-id="${esc(v.id)}">Delete</button></td>
-        </tr>`;
+        <div class="${cls}" data-row-id="${esc(v.id)}">
+          <div class="v-main">
+            <div class="v-title">${titleCell(v)}</div>
+            <div class="row-meta">
+              <code class="id">${esc(v.id)}</code>
+              <button class="copy" data-id="${esc(v.id)}" title="Copy media ID">Copy</button>
+              <span class="dot">·</span>${fmtDuration(v.duration)}
+              <span class="dot">·</span>${esc(fmtDate(v.created_time))}
+              <span class="dot">·</span>${views}
+            </div>
+            <div class="v-tags">${tagsCell(v)}</div>
+          </div>
+          <div class="v-side">
+            <div class="v-status">
+              ${visibilityPill(v)}
+              ${descCell(v)}
+            </div>
+            <div class="v-actions">
+              ${pub ? '' : `<button class="publish-btn" data-id="${esc(v.id)}">Publish</button>`}
+              <button class="done-toggle${done ? ' is-done' : ''}" data-id="${esc(v.id)}">${done ? '✓ Done' : 'Mark done'}</button>
+            </div>
+            <div class="v-utils">
+              <a class="watch" href="https://studio.dailymotion.com/media/${esc(v.id)}/edit" target="_blank" rel="noopener">Dashboard ↗</a>
+              <button class="delete-btn" data-id="${esc(v.id)}" title="Delete from Dailymotion">Delete</button>
+            </div>
+          </div>
+        </div>`;
     }
 
     function tableFor(videos) {
-      return `
-        <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th>Done</th><th>Media ID</th><th>Title</th><th>Duration</th><th>Created</th>
-              <th>Views</th><th>Visibility</th><th>Description</th><th>Tags</th><th>Links</th><th>Publish</th><th>Delete</th>
-            </tr></thead>
-            <tbody>${videos.map(rowFor).join('')}</tbody>
-          </table>
-        </div>`;
+      return `<div class="v-list">${videos.map(rowFor).join('')}</div>`;
     }
 
     const isDoneV = (v) => doneSet.has(String(v.id));
@@ -437,6 +550,16 @@
       tabs.style.display = total ? 'flex' : 'none';
       for (const t of tabs.querySelectorAll('.tab')) {
         t.classList.toggle('active', t.dataset.tab === activeTab);
+      }
+      // Passive completion indicator — mirrors the Done / total counts above.
+      const progress = document.getElementById('progress');
+      if (total) {
+        const pct = Math.round((done / total) * 100);
+        document.getElementById('progress-bar').style.width = pct + '%';
+        document.getElementById('progress-label').textContent = `${done} of ${total} done · ${pct}%`;
+        progress.style.display = 'flex';
+      } else {
+        progress.style.display = 'none';
       }
     }
 
@@ -661,10 +784,8 @@
         return;
       }
 
-      const vid = allVideos.find((x) => String(x.id) === id);
-      const needsPublish = vid ? !isPublic(vid) : true;
       status.className = 'info';
-      status.textContent = needsPublish ? 'Marking done + publishing on Dailymotion…' : 'Marking done…';
+      status.textContent = 'Marking done…';
 
       try {
         const res = await fetch('/api/done', {
@@ -673,34 +794,12 @@
         });
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
+        status.className = 'info';
+        status.textContent = '✓ Marked done.';
       } catch (err) {
         doneSet.delete(id); render();
         status.className = 'err';
         status.textContent = '❌ Could not mark done: ' + err.message;
-        return;
-      }
-
-      if (!needsPublish) {
-        status.className = 'info';
-        status.textContent = '✓ Marked done.';
-        return;
-      }
-
-      try {
-        const res = await fetch('/api/publish', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
-        const v = allVideos.find((x) => String(x.id) === id);
-        if (v) { if (data.video) Object.assign(v, data.video); else { v.private = false; v.published = true; } }
-        render();
-        status.className = 'info';
-        status.textContent = '✓ Marked done and published on Dailymotion.';
-      } catch (err) {
-        status.className = 'err';
-        status.textContent = '⚠ Marked done, but could not publish: ' + err.message;
       }
     });
 

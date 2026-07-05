@@ -123,6 +123,14 @@
 
     .v-main { flex: 1 1 auto; min-width: 0; }
     .v-title { font-size: 1rem; font-weight: 700; line-height: 1.35; color: var(--text); letter-spacing: -.01em; }
+    .edit-title-btn {
+      display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+      margin-left: .4rem; padding: .05rem .3rem; font-size: .82rem; line-height: 1;
+      background: transparent; color: var(--text-4); border: 1px solid transparent; border-radius: 6px;
+      cursor: pointer; opacity: 0; transition: opacity var(--ease), background var(--ease), color var(--ease), border-color var(--ease);
+    }
+    .v-item:hover .edit-title-btn, .v-item:focus-within .edit-title-btn { opacity: 1; }
+    .edit-title-btn:hover { background: var(--accent-weak); color: var(--accent); border-color: var(--accent); }
     .v-tags { margin-top: .65rem; }
 
     .v-side { flex: 0 0 auto; width: 300px; display: flex; flex-direction: column; align-items: flex-end; gap: .6rem; }
@@ -475,7 +483,10 @@
     // The Title cell shows the current title, plus a "Use title" suggestion when
     // a matched tracker row has a different (cleaner) title.
     function titleCell(v) {
-      const base = esc(v.title) || '<span class="muted">(untitled)</span>';
+      const titleText = esc(v.title) || '<span class="muted">(untitled)</span>';
+      // A pencil that fades in on row hover, opening the title-change modal.
+      const editIcon = `<button class="edit-title-btn" data-id="${esc(v.id)}" title="Edit title" aria-label="Edit title">✎</button>`;
+      const base = `<span class="v-title-text">${titleText}</span>${editIcon}`;
       const m = matchById.get(String(v.id));
       if (!m || !m.row || !m.row.title) return base;
       if (normTitle(m.row.title) === normTitle(v.title)) return base;  // already matches
@@ -784,6 +795,8 @@
     results.addEventListener('click', (e) => {
       const desc = e.target.closest('.add-desc-btn');
       if (desc) return openModal(desc.dataset.id, 'description');
+      const editTitle = e.target.closest('.edit-title-btn');
+      if (editTitle) return openModal(editTitle.dataset.id, 'title');
       const title = e.target.closest('.fix-title-btn');
       if (title) return openModal(title.dataset.id, 'title');
       const tags = e.target.closest('.fix-tags-btn');

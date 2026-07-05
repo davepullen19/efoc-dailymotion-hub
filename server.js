@@ -488,6 +488,8 @@ const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST
 const KV_ENABLED = !!(KV_URL && KV_TOKEN);
 const DONE_KEY = 'done:videos';
 const DONE_FILE = path.join(__dirname, 'done.json');
+const HIDDEN_KEY = 'hidden:videos';
+const HIDDEN_FILE = path.join(__dirname, 'hidden.json');
 
 let _kv = null;
 async function kvClient() {
@@ -547,6 +549,60 @@ app.post('/api/done', async (req, res) => {
     res.json({ success: true, id, done });
   } catch (err) {
     console.error('✗ Could not update done mark:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Hidden marks work exactly like done marks (separate set), so hiding a video
+// only tucks it away in the UI — it stays on Dailymotion and keeps its done
+// status, which is restored when it's unhidden.
+async function getHiddenIds() {
+  if (KV_ENABLED) {
+    const ids = await (await kvClient()).smembers(HIDDEN_KEY);
+    return new Set(ids || []);
+  }
+  try {
+    return new Set(JSON.parse(fs.readFileSync(HIDDEN_FILE, 'utf8')));
+  } catch {
+    return new Set();
+  }
+}
+
+async function setHidden(id, hidden) {
+  if (KV_ENABLED) {
+    const client = await kvClient();
+    if (hidden) await client.sadd(HIDDEN_KEY, id);
+    else await client.srem(HIDDEN_KEY, id);
+    return;
+  }
+  const ids = await getHiddenIds();
+  if (hidden) ids.add(id);
+  else ids.delete(id);
+  try {
+    fs.writeFileSync(HIDDEN_FILE, JSON.stringify([...ids], null, 2));
+  } catch {
+    // Read-only filesystem (e.g. Vercel without KV) — nothing we can do.
+  }
+}
+
+app.get('/api/hidden', async (req, res) => {
+  try {
+    res.json({ hidden: [...(await getHiddenIds())] });
+  } catch (err) {
+    console.error('✗ Could not read hidden marks:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/hidden', async (req, res) => {
+  const id = req.body?.id != null ? String(req.body.id) : '';
+  const hidden = req.body?.hidden === true || req.body?.hidden === 'true';
+  if (!id) return res.status(400).json({ error: 'Missing video id.' });
+  try {
+    await setHidden(id, hidden);
+    res.json({ success: true, id, hidden });
+  } catch (err) {
+    console.error('✗ Could not update hidden mark:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

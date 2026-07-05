@@ -128,6 +128,7 @@
     .v-actions { display: flex; gap: .4rem; flex-wrap: wrap; justify-content: flex-end; }
     .v-utils { display: flex; gap: .35rem; align-items: center; justify-content: flex-end; opacity: .5; transition: opacity var(--ease); }
     .v-item:hover .v-utils, .v-item:focus-within .v-utils { opacity: 1; }
+    .v-utils:has(.unhide-btn) { opacity: 1; }  /* unhide is the main action on hidden rows */
 
     @media (max-width: 760px) {
       .v-item { flex-direction: column; gap: .85rem; }
@@ -152,14 +153,15 @@
     }
     .publish-btn:hover { background: var(--accent-hover); }
     .publish-btn:disabled { opacity: .6; cursor: wait; }
-    /* Delete is destructive + rare: keep it a quiet ghost until hovered. */
-    .delete-btn {
+    /* Hide is reversible + secondary: keep it a quiet ghost until hovered. */
+    .hide-btn, .unhide-btn {
       padding: .3rem .5rem; font-size: .78rem; background: transparent; color: var(--text-3);
       border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap;
       font-weight: 600; transition: background var(--ease), border-color var(--ease), color var(--ease);
     }
-    .delete-btn:hover { background: #fef3f2; color: #b42318; border-color: #fecdca; }
-    .delete-btn:disabled { opacity: .6; cursor: wait; }
+    .hide-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+    .unhide-btn { color: var(--accent); }
+    .unhide-btn:hover { background: var(--accent-weak); border-color: var(--accent); }
     /* Secondary reference metadata, tucked under the title. */
     .row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .5rem; font-size: .75rem; font-weight: 400; color: var(--text-4); }
     .row-meta .dot { color: var(--border-strong); }
@@ -275,6 +277,7 @@
       <button class="tab active" data-tab="todo">To do <span class="tcount" id="count-todo">0</span></button>
       <button class="tab" data-tab="done">Done <span class="tcount" id="count-done">0</span></button>
       <button class="tab" data-tab="all">All <span class="tcount" id="count-all">0</span></button>
+      <button class="tab" data-tab="hidden">Hidden <span class="tcount" id="count-hidden">0</span></button>
     </div>
     <div class="progress" id="progress" style="display:none">
       <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
@@ -324,6 +327,7 @@
     let allVideos = [];
     let activeTab = 'todo';
     let doneSet = new Set();
+    let hiddenSet = new Set();
     let descRows = [];              // [{ mediaId, title, description, day }]
     const matchById = new Map();    // video id -> { tier, score, row, proposed }
 
@@ -538,7 +542,9 @@
             </div>
             <div class="v-utils">
               <a class="watch" href="${esc(dashboardUrl(v))}" target="_blank" rel="noopener">Dashboard ↗</a>
-              <button class="delete-btn" data-id="${esc(v.id)}" title="Delete from Dailymotion">Delete</button>
+              ${hiddenSet.has(String(v.id))
+                ? `<button class="unhide-btn" data-id="${esc(v.id)}" title="Restore to the other tabs">↩ Unhide</button>`
+                : `<button class="hide-btn" data-id="${esc(v.id)}" title="Hide from all tabs">Hide</button>`}
             </div>
           </div>
         </div>`;
@@ -549,18 +555,24 @@
     }
 
     const isDoneV = (v) => doneSet.has(String(v.id));
+    const isHiddenV = (v) => hiddenSet.has(String(v.id));
 
     function renderTabs() {
-      const total = allVideos.length;
-      const done = allVideos.filter(isDoneV).length;
+      // Hidden videos are excluded from every other tab and from progress.
+      const visible = allVideos.filter((v) => !isHiddenV(v));
+      const total = visible.length;
+      const done = visible.filter(isDoneV).length;
+      const hidden = allVideos.length - total;
       document.getElementById('count-todo').textContent = total - done;
       document.getElementById('count-done').textContent = done;
       document.getElementById('count-all').textContent = total;
-      tabs.style.display = total ? 'flex' : 'none';
+      document.getElementById('count-hidden').textContent = hidden;
+      tabs.style.display = allVideos.length ? 'flex' : 'none';
       for (const t of tabs.querySelectorAll('.tab')) {
         t.classList.toggle('active', t.dataset.tab === activeTab);
       }
-      // Passive completion indicator — mirrors the Done / total counts above.
+      // Passive completion indicator — mirrors the Done / total counts, and like
+      // those counts it ignores hidden videos entirely.
       const progress = document.getElementById('progress');
       if (total) {
         const pct = Math.round((done / total) * 100);
@@ -574,9 +586,13 @@
 
     function render() {
       renderTabs();
-      let videos = allVideos;
-      if (activeTab === 'todo') videos = allVideos.filter((v) => !isDoneV(v));
-      else if (activeTab === 'done') videos = allVideos.filter(isDoneV);
+      // Every tab except "hidden" shows only non-hidden videos.
+      const visible = allVideos.filter((v) => !isHiddenV(v));
+      let videos;
+      if (activeTab === 'hidden') videos = allVideos.filter(isHiddenV);
+      else if (activeTab === 'todo') videos = visible.filter((v) => !isDoneV(v));
+      else if (activeTab === 'done') videos = visible.filter(isDoneV);
+      else videos = visible;
 
       if (!allVideos.length) {
         results.innerHTML = '<p class="muted">No videos found for this tag.</p>';
@@ -585,6 +601,7 @@
       if (!videos.length) {
         const msg = activeTab === 'done' ? 'Nothing marked done yet.'
           : activeTab === 'todo' ? 'All caught up — everything is marked done. 🎉'
+          : activeTab === 'hidden' ? 'Nothing hidden.'
           : 'No videos found for this tag.';
         results.innerHTML = `<p class="muted">${msg}</p>`;
         return;
@@ -839,37 +856,35 @@
       }
     });
 
-    // ---- Delete ------------------------------------------------------------
-    results.addEventListener('click', async (e) => {
-      const btn = e.target.closest('.delete-btn');
-      if (!btn) return;
-      const id = String(btn.dataset.id);
-      const v = allVideos.find((x) => String(x.id) === id);
-      const title = (v && v.title) ? v.title : id;
-      const ok = window.confirm(
-        `Permanently DELETE this video from Dailymotion?\n\n“${title}”\n(id: ${id})\n\n` +
-        `⚠️ This cannot be undone. Once it's gone, it's gone — the video is removed from Dailymotion for everyone.`
-      );
-      if (!ok) return;
-      btn.disabled = true;
-      btn.textContent = 'Deleting…';
-      status.className = 'info';
-      status.textContent = 'Deleting from Dailymotion…';
+    // ---- Hide / Unhide -----------------------------------------------------
+    // Hiding tucks a video into the "Hidden" tab and out of every other tab and
+    // the progress bar. It leaves the video (and its done status) untouched, so
+    // unhiding restores it to whichever tab its status puts it in.
+    async function setHiddenState(id, hidden) {
+      if (hidden) hiddenSet.add(id); else hiddenSet.delete(id);
+      render();
       try {
-        const res = await fetch('/api/videos/' + encodeURIComponent(id), { method: 'DELETE' });
+        const res = await fetch('/api/hidden', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, hidden }),
+        });
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
-        allVideos = allVideos.filter((x) => String(x.id) !== id);
-        doneSet.delete(id);
-        render();
         status.className = 'info';
-        status.textContent = '🗑️ Deleted from Dailymotion.';
+        status.textContent = hidden ? '🙈 Hidden.' : '↩ Restored.';
       } catch (err) {
-        btn.disabled = false;
-        btn.textContent = 'Delete';
+        if (hidden) hiddenSet.delete(id); else hiddenSet.add(id);
+        render();
         status.className = 'err';
-        status.textContent = '❌ Could not delete: ' + err.message;
+        status.textContent = '❌ Could not update: ' + err.message;
       }
+    }
+
+    results.addEventListener('click', (e) => {
+      const hideBtn = e.target.closest('.hide-btn');
+      if (hideBtn) return setHiddenState(String(hideBtn.dataset.id), true);
+      const unhideBtn = e.target.closest('.unhide-btn');
+      if (unhideBtn) return setHiddenState(String(unhideBtn.dataset.id), false);
     });
 
     // ---- Tabs + copy -------------------------------------------------------
@@ -927,15 +942,20 @@
       }
       try {
         const url = '/api/videos' + (refresh ? '/refresh' : '') + '?tag=' + encodeURIComponent(tag);
-        const [res, doneRes] = await Promise.all([
+        const [res, doneRes, hiddenRes] = await Promise.all([
           fetch(url, { method: refresh ? 'POST' : 'GET' }),
           fetch('/api/done'),
+          fetch('/api/hidden'),
         ]);
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
         try {
           const dd = await doneRes.json();
           if (Array.isArray(dd.done)) doneSet = new Set(dd.done.map(String));
+        } catch { /* non-fatal */ }
+        try {
+          const hh = await hiddenRes.json();
+          if (Array.isArray(hh.hidden)) hiddenSet = new Set(hh.hidden.map(String));
         } catch { /* non-fatal */ }
         refreshSpin.style.display = 'none';
         loadBtn.disabled = refreshBtn.disabled = false;

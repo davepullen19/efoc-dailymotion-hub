@@ -445,6 +445,15 @@
     const isDNP = (title) => /(^|[^a-z])DNP([^a-z]|$)/i.test(String(title || ''));
     const isPublic = (v) => !v.private && v.published;
 
+    // Deep-link to the individual video in the partner dashboard, e.g.
+    // dailymotion.com/partner/x4fnf6g/media/video/details/xalnuqq
+    function dashboardUrl(v) {
+      const owner = v['owner.id'];
+      return owner
+        ? `https://www.dailymotion.com/partner/${owner}/media/video/details/${v.id}`
+        : `https://studio.dailymotion.com/media/${v.id}/edit`;
+    }
+
     // The Description cell: a green tick when the video already has one, else an
     // "Add description" button that opens the modal pre-filled from the tracker.
     function descCell(v) {
@@ -528,7 +537,7 @@
               <button class="done-toggle${done ? ' is-done' : ''}" data-id="${esc(v.id)}">${done ? '✓ Done' : 'Mark done'}</button>
             </div>
             <div class="v-utils">
-              <a class="watch" href="https://studio.dailymotion.com/media/${esc(v.id)}/edit" target="_blank" rel="noopener">Dashboard ↗</a>
+              <a class="watch" href="${esc(dashboardUrl(v))}" target="_blank" rel="noopener">Dashboard ↗</a>
               <button class="delete-btn" data-id="${esc(v.id)}" title="Delete from Dailymotion">Delete</button>
             </div>
           </div>
